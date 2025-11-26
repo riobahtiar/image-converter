@@ -4,18 +4,41 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "biome check .",
+    "format": "biome format --write .",
     "imgco": "bun index.ts",
     "icon": "bun run imgco --format webp --quality 90 -w 600",
     "reset-log": "bun run imgco --reset",
     "clean": "bun run imgco --clean"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@biomejs/biome": "^2.3.7",
+    "@tailwindcss/postcss": "^4.1.17",
+    "@types/archiver": "^7.0.0",
+    "@types/bun": "latest",
+    "@types/react": "19.2.7",
+    "autoprefixer": "^10.4.22",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.17"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
-    "sharp": "^0.34.5"
+    "@radix-ui/react-slot": "^1.2.4",
+    "archiver": "^7.0.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.555.0",
+    "next": "^16.0.4",
+    "next-themes": "^0.4.6",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "sharp": "^0.34.5",
+    "tailwind-merge": "^3.4.0",
+    "tailwindcss-animate": "^1.0.7"
   }
 }

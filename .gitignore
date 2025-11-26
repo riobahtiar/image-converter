@@ -39,3 +39,14 @@ raw/*
 !raw/.gitkeep
 results/*
 !results/.gitkeep
+
+# Next.js
+.next/
+out/
+build/
+.vercel
+.turbo
+
+# Next.js uploads (temporary files)
+public/uploads/*
+!public/uploads/.gitkeep

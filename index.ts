@@ -1,6 +1,7 @@
+import { mkdir, readdir, stat, rm, rmdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { basename, extname, join } from "node:path";
 import sharp from "sharp";
-import { readdir, mkdir } from "node:fs/promises";
-import { join, extname, basename } from "node:path";
 import { defaultConfig, getCompressionSettings } from "./config";
 
 /**
@@ -41,7 +42,7 @@ class CircuitBreaker {
   constructor(
     private failureThreshold: number = 5,
     private resetTimeout: number = 30000
-  ) {}
+  ) { }
 
   /**
    * Check if circuit breaker allows request
@@ -136,7 +137,7 @@ class Logger {
   constructor() {
     // Synchronously ensure log directory exists
     try {
-      const fs = require("fs");
+      const fs = require("node:fs");
       if (!fs.existsSync(this.logDir)) {
         fs.mkdirSync(this.logDir, { recursive: true });
       }
@@ -178,10 +179,10 @@ class Logger {
         ...(data && { data }),
       };
 
-      const logLine = JSON.stringify(logEntry, null, 2) + "\n" + "-".repeat(80) + "\n";
+      const logLine = `${JSON.stringify(logEntry, null, 2)}\n${"-".repeat(80)}\n`;
 
       // Use fs.appendFileSync for reliability
-      const fs = require("fs");
+      const fs = require("node:fs");
       fs.appendFileSync(logFile, logLine, "utf8");
     } catch (error) {
       console.error("Failed to write log:", error);
@@ -246,7 +247,7 @@ class Logger {
         if (file === ".gitkeep") continue;
         if (file.endsWith(".log")) {
           const filePath = join(this.logDir, file);
-          await Bun.$`rm -f ${filePath}`;
+          await rm(filePath, { force: true });
           count++;
         }
       }
@@ -267,22 +268,22 @@ class Logger {
    */
   async getStats(): Promise<{ errorLogSize: number; infoLogSize: number }> {
     try {
-      const errorLogSize = await Bun.file(this.errorLogFile).exists()
-        ? await Bun.file(this.errorLogFile).size
+      const errorLogSize = existsSync(this.errorLogFile)
+        ? (await stat(this.errorLogFile)).size
         : 0;
-      const infoLogSize = await Bun.file(this.infoLogFile).exists()
-        ? await Bun.file(this.infoLogFile).size
+      const infoLogSize = existsSync(this.infoLogFile)
+        ? (await stat(this.infoLogFile)).size
         : 0;
 
       return { errorLogSize, infoLogSize };
-    } catch (error) {
+    } catch (_error) {
       return { errorLogSize: 0, infoLogSize: 0 };
     }
   }
 }
 
 const DEFAULT_CONFIG: TransformConfig = {
-  width: undefined,  // undefined = auto (keeps original or calculates from aspect ratio)
+  width: undefined, // undefined = auto (keeps original or calculates from aspect ratio)
   height: undefined, // undefined = auto (keeps original or calculates from aspect ratio)
   format: defaultConfig.format,
   quality: defaultConfig.quality,
@@ -292,16 +293,19 @@ const DEFAULT_CONFIG: TransformConfig = {
 
 // Supported image formats (input formats that Sharp can read)
 const SUPPORTED_FORMATS = [
-  ".jpg", ".jpeg",  // JPEG
-  ".png",           // PNG
-  ".webp",          // WebP
-  ".gif",           // GIF (including animated)
-  ".svg",           // SVG
-  ".tiff", ".tif",  // TIFF
-  ".avif",          // AVIF
-  ".heif", ".heic", // HEIF (Apple)
-  ".jxl",           // JPEG XL (next-gen)
-  ".bmp",           // BMP
+  ".jpg",
+  ".jpeg", // JPEG
+  ".png", // PNG
+  ".webp", // WebP
+  ".gif", // GIF (including animated)
+  ".svg", // SVG
+  ".tiff",
+  ".tif", // TIFF
+  ".avif", // AVIF
+  ".heif",
+  ".heic", // HEIF (Apple)
+  ".jxl", // JPEG XL (next-gen)
+  ".bmp", // BMP
 ];
 
 /**
@@ -317,8 +321,8 @@ function slugify(text: string): string {
     .toLowerCase()
     .trim()
     .replace(/\s+/g, "-") // Replace spaces with -
-    .replace(/[^\w\-]+/g, "-") // Replace non-word chars with -
-    .replace(/\-\-+/g, "-") // Replace multiple - with single -
+    .replace(/[^\w-]+/g, "-") // Replace non-word chars with -
+    .replace(/--+/g, "-") // Replace multiple - with single -
     .replace(/^-+/, "") // Trim - from start
     .replace(/-+$/, ""); // Trim - from end
 }
@@ -332,7 +336,7 @@ function slugify(text: string): string {
  */
 async function cleanDirectory(dir: string): Promise<number> {
   try {
-    const fs = require("fs");
+    const _fs = require("node:fs");
     const entries = await readdir(dir, { withFileTypes: true });
     let count = 0;
 
@@ -347,12 +351,12 @@ async function cleanDirectory(dir: string): Promise<number> {
         count += await cleanDirectory(entryPath);
         // Remove empty directory
         try {
-          await Bun.$`rmdir ${entryPath}`;
-        } catch (e) {
+          await rmdir(entryPath);
+        } catch (_e) {
           // Directory might not be empty, that's okay
         }
       } else if (entry.isFile()) {
-        await Bun.$`rm -f ${entryPath}`;
+        await rm(entryPath, { force: true });
         count++;
       }
     }
@@ -395,8 +399,8 @@ async function ensureDirectory(dir: string, silent: boolean = false): Promise<vo
  */
 async function getImageFiles(sourceDir: string, relativePath: string = ""): Promise<string[]> {
   try {
-    const fs = require("fs");
-    const path = require("path");
+    const _fs = require("node:fs");
+    const _path = require("node:path");
     const currentPath = relativePath ? join(sourceDir, relativePath) : sourceDir;
     const entries = await readdir(currentPath, { withFileTypes: true });
 
@@ -404,7 +408,7 @@ async function getImageFiles(sourceDir: string, relativePath: string = ""): Prom
 
     for (const entry of entries) {
       const entryRelativePath = relativePath ? join(relativePath, entry.name) : entry.name;
-      const entryFullPath = join(currentPath, entry.name);
+      const _entryFullPath = join(currentPath, entry.name);
 
       if (entry.isDirectory()) {
         // Recursively scan subdirectories
@@ -538,75 +542,74 @@ async function transformImage(
     switch (config.format) {
       case "jpeg":
         transformer = transformer.jpeg({
-          quality: config.quality || compressionSettings.quality,
-          progressive: compressionSettings.progressive,
-          mozjpeg: compressionSettings.mozjpeg,
-          chromaSubsampling: compressionSettings.chromaSubsampling,
-          optimizeCoding: compressionSettings.optimizeCoding,
+          quality: config.quality || (compressionSettings as any).quality,
+          progressive: (compressionSettings as any).progressive,
+          mozjpeg: (compressionSettings as any).mozjpeg,
+          chromaSubsampling: (compressionSettings as any).chromaSubsampling,
+          optimizeCoding: (compressionSettings as any).optimizeCoding,
         });
         break;
 
       case "png":
         transformer = transformer.png({
-          quality: config.quality || compressionSettings.quality,
-          compressionLevel: compressionSettings.compressionLevel,
-          progressive: compressionSettings.progressive,
-          palette: compressionSettings.palette,
-          colors: compressionSettings.colors,
-          adaptiveFiltering: compressionSettings.adaptiveFiltering,
+          quality: config.quality || (compressionSettings as any).quality,
+          compressionLevel: (compressionSettings as any).compressionLevel,
+          progressive: (compressionSettings as any).progressive,
+          palette: (compressionSettings as any).palette,
+          colors: (compressionSettings as any).colors,
+          adaptiveFiltering: (compressionSettings as any).adaptiveFiltering,
         });
         break;
 
       case "webp":
         transformer = transformer.webp({
-          quality: config.quality || compressionSettings.quality,
-          lossless: compressionSettings.lossless,
-          effort: compressionSettings.effort,
-          nearLossless: compressionSettings.nearLossless,
-          smartSubsample: compressionSettings.smartSubsample,
+          quality: config.quality || (compressionSettings as any).quality,
+          lossless: (compressionSettings as any).lossless,
+          effort: (compressionSettings as any).effort,
+          nearLossless: (compressionSettings as any).nearLossless,
+          smartSubsample: (compressionSettings as any).smartSubsample,
         });
         break;
 
       case "avif":
         transformer = transformer.avif({
-          quality: config.quality || compressionSettings.quality,
-          lossless: compressionSettings.lossless,
-          effort: compressionSettings.effort,
-          chromaSubsampling: compressionSettings.chromaSubsampling,
+          quality: config.quality || (compressionSettings as any).quality,
+          lossless: (compressionSettings as any).lossless,
+          effort: (compressionSettings as any).effort,
+          chromaSubsampling: (compressionSettings as any).chromaSubsampling,
         });
         break;
 
       case "tiff":
         transformer = transformer.tiff({
-          quality: config.quality || compressionSettings.quality,
-          compression: compressionSettings.compression,
-          predictor: compressionSettings.predictor,
+          quality: config.quality || (compressionSettings as any).quality,
+          compression: (compressionSettings as any).compression,
+          predictor: (compressionSettings as any).predictor,
         });
         break;
 
       case "gif":
         transformer = transformer.gif({
-          colors: compressionSettings.colors,
-          dither: compressionSettings.dither,
-          effort: compressionSettings.effort,
+          colors: (compressionSettings as any).colors,
+          dither: (compressionSettings as any).dither,
+          effort: (compressionSettings as any).effort,
         });
         break;
 
       case "heif":
         transformer = transformer.heif({
-          quality: config.quality || compressionSettings.quality,
-          lossless: compressionSettings.lossless,
-          compression: compressionSettings.compression,
-          effort: compressionSettings.effort,
+          quality: config.quality || (compressionSettings as any).quality,
+          lossless: (compressionSettings as any).lossless,
+          compression: (compressionSettings as any).compression,
+          effort: (compressionSettings as any).effort,
         });
         break;
 
       case "jxl":
         transformer = transformer.jxl({
-          quality: config.quality || compressionSettings.quality,
-          lossless: compressionSettings.lossless,
-          effort: compressionSettings.effort,
-          decodingSpeed: compressionSettings.decodingSpeed,
+          quality: config.quality || (compressionSettings as any).quality,
+          lossless: (compressionSettings as any).lossless,
+          effort: (compressionSettings as any).effort,
         });
         break;
     }
@@ -618,11 +621,11 @@ async function transformImage(
 
     // Log error with context
     if (logger) {
-      await logger.error(
-        "Image transformation failed",
-        error as Error,
-        { inputPath, outputPath, config }
-      );
+      await logger.error("Image transformation failed", error as Error, {
+        inputPath,
+        outputPath,
+        config,
+      });
     }
 
     return false;
@@ -674,7 +677,7 @@ async function processBatch(
         const inputPath = join(sourceDir, file);
 
         // Preserve directory structure
-        const fileDir = require("path").dirname(file);
+        const fileDir = require("node:path").dirname(file);
         const fileBaseName = basename(file, extname(file));
         const slugifiedName = slugify(fileBaseName);
         const outputFileName = `${slugifiedName}.${config.format}`;
@@ -684,7 +687,7 @@ async function processBatch(
         const outputPath = join(outputDir, outputFileRelative);
 
         // Ensure output subdirectory exists
-        const outputSubDir = require("path").dirname(outputPath);
+        const outputSubDir = require("node:path").dirname(outputPath);
         await ensureDirectory(outputSubDir, true);
 
         console.log(`⚙️  Processing: ${file}...`);
@@ -694,8 +697,8 @@ async function processBatch(
 
           if (success) {
             circuitBreaker.recordSuccess();
-            const inputSize = (await Bun.file(inputPath).size) / 1024;
-            const outputSize = (await Bun.file(outputPath).size) / 1024;
+            const inputSize = (await stat(inputPath)).size / 1024;
+            const outputSize = (await stat(outputPath)).size / 1024;
             const savings = ((1 - outputSize / inputSize) * 100).toFixed(1);
 
             console.log(
@@ -705,21 +708,22 @@ async function processBatch(
           } else {
             circuitBreaker.recordFailure();
             console.log(`  ✗ Failed: ${file}`);
-            await logger.error(
-              "Image processing failed",
-              new Error("Transform returned false"),
-              { file, inputPath, outputPath }
-            );
+            await logger.error("Image processing failed", new Error("Transform returned false"), {
+              file,
+              inputPath,
+              outputPath,
+            });
             return { file, status: "failed" };
           }
         } catch (error) {
           circuitBreaker.recordFailure();
           console.error(`  ✗ Error processing ${file}:`, error);
-          await logger.error(
-            "Error during batch processing (parallel)",
-            error as Error,
-            { file, inputPath, outputPath, config }
-          );
+          await logger.error("Error during batch processing (parallel)", error as Error, {
+            file,
+            inputPath,
+            outputPath,
+            config,
+          });
           return { file, status: "failed" };
         }
       });
@@ -754,7 +758,7 @@ async function processBatch(
       const inputPath = join(sourceDir, file);
 
       // Preserve directory structure
-      const fileDir = require("path").dirname(file);
+      const fileDir = require("node:path").dirname(file);
       const fileBaseName = basename(file, extname(file));
       const slugifiedName = slugify(fileBaseName);
       const outputFileName = `${slugifiedName}.${config.format}`;
@@ -764,7 +768,7 @@ async function processBatch(
       const outputPath = join(outputDir, outputFileRelative);
 
       // Ensure output subdirectory exists
-      const outputSubDir = require("path").dirname(outputPath);
+      const outputSubDir = require("node:path").dirname(outputPath);
       await ensureDirectory(outputSubDir, true);
 
       console.log(`Processing: ${file}...`);
@@ -774,8 +778,8 @@ async function processBatch(
 
         if (success) {
           circuitBreaker.recordSuccess();
-          const inputSize = (await Bun.file(inputPath).size) / 1024;
-          const outputSize = (await Bun.file(outputPath).size) / 1024;
+          const inputSize = (await stat(inputPath)).size / 1024;
+          const outputSize = (await stat(outputPath)).size / 1024;
           const savings = ((1 - outputSize / inputSize) * 100).toFixed(1);
 
           console.log(
@@ -785,21 +789,22 @@ async function processBatch(
         } else {
           circuitBreaker.recordFailure();
           console.log(`  ✗ Failed\n`);
-          await logger.error(
-            "Image processing failed",
-            new Error("Transform returned false"),
-            { file, inputPath, outputPath }
-          );
+          await logger.error("Image processing failed", new Error("Transform returned false"), {
+            file,
+            inputPath,
+            outputPath,
+          });
           failCount++;
         }
       } catch (error) {
         circuitBreaker.recordFailure();
         console.error(`  ✗ Error processing ${file}:`, error);
-        await logger.error(
-          "Error during batch processing (sequential)",
-          error as Error,
-          { file, inputPath, outputPath, config }
-        );
+        await logger.error("Error during batch processing (sequential)", error as Error, {
+          file,
+          inputPath,
+          outputPath,
+          config,
+        });
         failCount++;
       }
 
@@ -832,36 +837,38 @@ async function main(): Promise<void> {
   let sourceDir = defaultConfig.sourceDir;
   let outputDir = defaultConfig.outputDir;
 
+  // A simple argument parser to get key-value pairs
+  const values: { [key: string]: string | undefined } = {};
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
       case "--width":
       case "-w":
-        config.width = parseInt(args[++i]);
+        config.width = parseInt(args[++i] || "0", 10);
         break;
       case "--height":
       case "-h":
-        config.height = parseInt(args[++i]);
+        config.height = parseInt(args[++i] || "0", 10);
         break;
       case "--format":
       case "-f":
-        config.format = args[++i] as TransformConfig["format"];
+        config.format = (args[++i] || "webp") as TransformConfig["format"];
         break;
       case "--quality":
       case "-q":
-        config.quality = parseInt(args[++i]);
+        config.quality = parseInt(args[++i] || "80", 10);
         break;
       case "--fit":
-        config.fit = args[++i] as TransformConfig["fit"];
+        config.fit = (args[++i] || "inside") as TransformConfig["fit"];
         break;
       case "--source":
       case "-s":
-        sourceDir = args[++i];
+        sourceDir = args[++i] || "./raw";
         break;
       case "--output":
       case "-o":
-        outputDir = args[++i];
+        outputDir = args[++i] || "./results";
         break;
-      case "--clean":
+      case "--clean": {
         const cleanSourceDir = args[i + 1] || sourceDir;
         const cleanOutputDir = args[i + 2] || outputDir;
 
@@ -874,8 +881,9 @@ async function main(): Promise<void> {
         console.log(`✓ Removed ${resultsCount} file(s) from ${cleanOutputDir}\n`);
         process.exit(0);
         break;
+      }
       case "--clear-logs":
-      case "--reset":
+      case "--reset": {
         console.log("\n🧹 Clearing log files...\n");
 
         const logCount = await logger.clearLogs();
@@ -883,6 +891,7 @@ async function main(): Promise<void> {
         console.log(`✓ Removed ${logCount} log file(s)\n`);
         process.exit(0);
         break;
+      }
       case "--help":
         console.log(`
 Image Converter - Transform images in bulk using Bun and Sharp
@@ -982,7 +991,7 @@ Advanced Features (edit config.ts for):
   );
 
   // Display final results
-  console.log("\n" + "=".repeat(50));
+  console.log(`\n${"=".repeat(50)}`);
   console.log(`✨ Complete! Processed ${successCount}/${imageFiles.length} images`);
 
   if (failCount > 0) {
@@ -999,7 +1008,7 @@ Advanced Features (edit config.ts for):
   console.log(`   Successes: ${breakerState.successes}`);
   console.log(`   Failures: ${breakerState.failures}`);
 
-  console.log("=".repeat(50) + "\n");
+  console.log(`${"=".repeat(50)}\n`);
 
   // Log processing complete
   await logger.info("Image conversion completed", {

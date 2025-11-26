@@ -1,0 +1,254 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-lato);
+  --font-heading: var(--font-chelsea);
+
+  --color-background: oklch(var(--background));
+  --color-foreground: oklch(var(--foreground));
+
+  --color-card: oklch(var(--card));
+  --color-card-foreground: oklch(var(--card-foreground));
+
+  --color-popover: oklch(var(--popover));
+  --color-popover-foreground: oklch(var(--popover-foreground));
+
+  --color-primary: oklch(var(--primary));
+  --color-primary-foreground: oklch(var(--primary-foreground));
+
+  --color-secondary: oklch(var(--secondary));
+  --color-secondary-foreground: oklch(var(--secondary-foreground));
+
+  --color-muted: oklch(var(--muted));
+  --color-muted-foreground: oklch(var(--muted-foreground));
+
+  --color-accent: oklch(var(--accent));
+  --color-accent-foreground: oklch(var(--accent-foreground));
+
+  --color-destructive: oklch(var(--destructive));
+  --color-destructive-foreground: oklch(var(--destructive-foreground));
+
+  --color-border: oklch(var(--border));
+  --color-input: oklch(var(--input));
+  --color-ring: oklch(var(--ring));
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+}
+
+:root {
+  /* Violet Theme in OKLCH */
+  --background: 100% 0 0;
+  --foreground: 30% 0.05 290;
+
+  --card: 100% 0 0;
+  --card-foreground: 30% 0.05 290;
+
+  --popover: 100% 0 0;
+  --popover-foreground: 30% 0.05 290;
+
+  --primary: 60% 0.2 290;
+  --primary-foreground: 98% 0 0;
+
+  --secondary: 95% 0.03 290;
+  --secondary-foreground: 40% 0.1 290;
+
+  --muted: 95% 0.02 290;
+  --muted-foreground: 60% 0.02 290;
+
+  --accent: 95% 0.03 290;
+  --accent-foreground: 40% 0.1 290;
+
+  --destructive: 60% 0.2 20;
+  --destructive-foreground: 98% 0 0;
+
+  --border: 90% 0.02 290;
+  --input: 90% 0.02 290;
+  --ring: 60% 0.2 290;
+
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: 20% 0.03 290;
+  --foreground: 95% 0.02 290;
+
+  --card: 25% 0.03 290;
+  --card-foreground: 95% 0.02 290;
+
+  --popover: 25% 0.03 290;
+  --popover-foreground: 95% 0.02 290;
+
+  --primary: 70% 0.15 290;
+  --primary-foreground: 20% 0.05 290;
+
+  --secondary: 30% 0.05 290;
+  --secondary-foreground: 90% 0.05 290;
+
+  --muted: 30% 0.03 290;
+  --muted-foreground: 70% 0.03 290;
+
+  --accent: 30% 0.05 290;
+  --accent-foreground: 90% 0.05 290;
+
+  --destructive: 40% 0.2 20;
+  --destructive-foreground: 95% 0 0;
+
+  --border: 30% 0.03 290;
+  --input: 30% 0.03 290;
+  --ring: 70% 0.15 290;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-heading;
+  }
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: oklch(var(--muted));
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: oklch(var(--muted-foreground) / 0.3);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(var(--muted-foreground) / 0.5);
+}
+
+/* Smooth transitions for interactive elements */
+button,
+a,
+input,
+select,
+textarea {
+  transition: all 0.2s ease-in-out;
+}
+
+/* Focus visible styles */
+*:focus-visible {
+  outline: 2px solid oklch(var(--ring));
+  outline-offset: 2px;
+  border-radius: calc(var(--radius) - 2px);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse-glow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 oklch(var(--primary) / 0.4);
+  }
+
+  50% {
+    box-shadow: 0 0 0 8px oklch(var(--primary) / 0);
+  }
+}
+
+/* Apply fade-in animation to cards */
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out;
+}
+
+/* Improved input and select styles */
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: oklch(var(--primary));
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: oklch(var(--primary));
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+input[type="range"]::-moz-range-thumb:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Number input cleanup */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  opacity: 0.5;
+}
+
+/* Better mobile tap highlighting */
+@media (hover: none) {
+
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+}

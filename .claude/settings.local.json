@@ -3,7 +3,11 @@
     "allow": [
       "Bash(bun run:*)",
       "Bash(cat:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(npx create-next-app@latest:*)",
+      "Bash(bun add:*)",
+      "Bash(bunx tailwindcss init:*)",
+      "Bash(bunx @biomejs/biome:*)"
     ],
     "deny": [],
     "ask": []

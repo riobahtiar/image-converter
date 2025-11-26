@@ -1,0 +1,210 @@
+import { writeFile } from "node:fs/promises";
+import { basename, extname, join } from "node:path";
+import { type NextRequest, NextResponse } from "next/server";
+import { fileCache } from "@/lib/cache";
+import { convertImage, slugifyFilename } from "@/lib/converter";
+import type { ImageFormat, ResizeFit } from "@/lib/converter/types";
+import { generateUniqueFilename } from "@/lib/utils";
+
+/**
+ * Supported input image formats
+ */
+const SUPPORTED_FORMATS = [
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".webp",
+  ".gif",
+  ".svg",
+  ".tiff",
+  ".tif",
+  ".avif",
+  ".heif",
+  ".heic",
+  ".jxl",
+  ".bmp",
+];
+
+/**
+ * POST /api/convert
+ * Upload and convert images
+ *
+ * Accepts multipart/form-data with:
+ * - files: One or more image files
+ * - format: Output format (jpeg|png|webp|avif|tiff|gif|heif|jxl)
+ * - quality: Image quality (1-100)
+ * - width: Target width (optional)
+ * - height: Target height (optional)
+ * - fit: Resize fit mode (cover|contain|fill|inside|outside)
+ *
+ * Returns JSON with conversion results and download URLs
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const formData = await request.formData();
+
+    // Get uploaded files
+    const files = formData.getAll("files") as File[];
+
+    if (files.length === 0) {
+      return NextResponse.json({ error: "No files uploaded" }, { status: 400 });
+    }
+
+    // Extract bulk conversion options (used if no per-file settings)
+    const bulkFormat = (formData.get("format") as ImageFormat) || "webp";
+    const bulkQuality = parseInt(formData.get("quality") as string, 10) || 80;
+    const bulkWidth = formData.get("width")
+      ? parseInt(formData.get("width") as string, 10)
+      : undefined;
+    const bulkHeight = formData.get("height")
+      ? parseInt(formData.get("height") as string, 10)
+      : undefined;
+    const bulkFit = (formData.get("fit") as ResizeFit) || "inside";
+
+    // Check for per-file settings
+    const perFileSettings: Array<{
+      format: ImageFormat;
+      quality: number;
+      width?: number;
+      height?: number;
+      fit: ResizeFit;
+    } | null> = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const settingsJson = formData.get(`settings[${i}]`);
+      if (settingsJson) {
+        try {
+          perFileSettings[i] = JSON.parse(settingsJson as string);
+        } catch {
+          perFileSettings[i] = null;
+        }
+      } else {
+        perFileSettings[i] = null;
+      }
+    }
+
+    // Validate files
+    for (const file of files) {
+      const ext = extname(file.name).toLowerCase();
+      if (!SUPPORTED_FORMATS.includes(ext)) {
+        return NextResponse.json({ error: `Unsupported file format: ${ext}` }, { status: 400 });
+      }
+    }
+
+    // Process each file
+    const results = [];
+    const cacheDir = fileCache.getCacheDir();
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!file) continue;
+
+      try {
+        // Get settings for this file (per-file or bulk)
+        const fileSettings = perFileSettings[i] || {
+          format: bulkFormat,
+          quality: bulkQuality,
+          width: bulkWidth,
+          height: bulkHeight,
+          fit: bulkFit,
+        };
+
+        // Generate unique filename
+        const uniqueFilename = generateUniqueFilename(file.name);
+        const inputPath = join(cacheDir, uniqueFilename);
+
+        // Save uploaded file
+        const bytes = await file.arrayBuffer();
+        const buffer = Buffer.from(bytes);
+        await writeFile(inputPath, buffer);
+
+        // Generate output filename with correct format
+        const fileBaseName = basename(file.name, extname(file.name));
+        const slugifiedName = slugifyFilename(fileBaseName);
+        const outputFilename = `${slugifiedName}.${fileSettings.format}`;
+        const outputPath = join(cacheDir, generateUniqueFilename(outputFilename));
+
+        // Convert image with file-specific settings
+        const result = await convertImage(buffer, outputPath, {
+          format: fileSettings.format,
+          quality: fileSettings.quality,
+          width: fileSettings.width,
+          height: fileSettings.height,
+          fit: fileSettings.fit,
+          preserveAspectRatio: true,
+        });
+
+        if (result.success) {
+          results.push({
+            success: true,
+            originalFilename: file.name,
+            outputFilename: basename(outputPath),
+            downloadUrl: `/api/download/${basename(outputPath)}`,
+            originalSize: result.originalSize,
+            convertedSize: result.convertedSize,
+            reductionPercent: result.reductionPercent,
+          });
+        } else {
+          results.push({
+            success: false,
+            originalFilename: file.name,
+            error: result.error,
+          });
+        }
+
+        // Clean up input file
+        await require("node:fs/promises").unlink(inputPath);
+      } catch (error) {
+        results.push({
+          success: false,
+          originalFilename: file.name,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    }
+
+    // Calculate statistics
+    const stats = {
+      total: results.length,
+      success: results.filter((r) => r.success).length,
+      failed: results.filter((r) => !r.success).length,
+      totalOriginalSize: results.reduce((sum, r) => sum + (r.originalSize || 0), 0),
+      totalConvertedSize: results.reduce((sum, r) => sum + (r.convertedSize || 0), 0),
+    };
+
+    return NextResponse.json({
+      success: true,
+      results,
+      stats,
+    });
+  } catch (error) {
+    console.error("[API] Convert error:", error);
+    return NextResponse.json(
+      {
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * GET /api/convert
+ * Get conversion options and supported formats
+ */
+export async function GET() {
+  return NextResponse.json({
+    supportedInputFormats: SUPPORTED_FORMATS,
+    supportedOutputFormats: ["jpeg", "png", "webp", "avif", "tiff", "gif", "heif", "jxl"],
+    defaultOptions: {
+      format: "webp",
+      quality: 80,
+      fit: "inside",
+    },
+    limits: {
+      maxFileSize: "50MB",
+      maxFiles: 50,
+    },
+  });
+}

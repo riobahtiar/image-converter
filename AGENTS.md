@@ -1,487 +1,587 @@
-# AGENTS.md - Image Converter Project
+# Image Converter - Technical Documentation
 
-> Documentation for AI agents working with this codebase
+> Architecture and development guide for AI agents and developers
 
-## Project Overview
+---
 
-**Image Converter** is a high-performance CLI tool built with Bun and Sharp that transforms images in bulk. It converts SVG, JPEG, JPG, and PNG images to optimized WebP format (or other formats).
+## Overview
 
-### Core Purpose
-- Batch process multiple images
-- Convert to web-optimized formats
-- Resize and compress images
-- Generate URL-safe filenames
-- Provide easy cleanup utilities
+**Image Converter** is a dual-interface image conversion tool:
+- **CLI**: Command-line tool for batch processing (`bun run imgco`)
+- **Web App**: Next.js interface with drag-and-drop (`bun dev`)
+
+**Core**: Both share the same conversion logic powered by Bun and Sharp.
+
+---
 
 ## Project Structure
 
 ```
 image-converter/
-├── index.ts              # Main CLI application
-├── config.ts             # Configuration and presets
-├── package.json          # Dependencies and scripts
-├── tsconfig.json         # TypeScript configuration
-├── raw/                  # Source images directory
-├── results/              # Output images directory
-├── README.md             # User documentation
-├── CLAUDE.md             # Project instructions (use Bun)
-└── AGENTS.md             # This file
+├── CLI
+│   ├── index.ts                    # Main CLI application
+│   ├── config.ts                   # Configuration (shared)
+│   ├── raw/                        # Input images
+│   └── results/                    # Output images
+│
+├── Web App (Next.js 16)
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── convert/route.ts   # POST /api/convert
+│   │   │   └── download/[filename]/route.ts  # GET /api/download
+│   │   ├── layout.tsx             # Root layout
+│   │   ├── page.tsx               # Main UI
+│   │   └── globals.css            # Tailwind styles
+│   ├── components/ui/              # shadcn/ui components
+│   └── public/uploads/temp/        # Temporary storage (15min)
+│
+├── Shared Logic
+│   └── lib/
+│       ├── converter/
+│       │   ├── core.ts            # convertImage() function
+│       │   ├── types.ts           # TypeScript types
+│       │   └── index.ts           # Exports
+│       ├── cache.ts               # File auto-cleanup
+│       └── utils.ts               # Utilities
+│
+├── Config
+│   ├── next.config.ts
+│   ├── tailwind.config.ts
+│   ├── postcss.config.mjs
+│   ├── biome.json
+│   └── tsconfig.json
+│
+└── Docs
+    ├── README.md                   # User guide
+    ├── AGENTS.md                   # This file
+    ├── API.md                      # API reference
+    └── CLAUDE.md                   # Quick ref → AGENTS.md
 ```
 
-## Architecture
+---
 
-### 1. Main Entry Point (`index.ts`)
+## CLI Architecture
+
+### Entry Point: `index.ts`
 
 **Key Functions:**
-- `slugify(text: string)` - Converts filenames to URL-safe format
-- `cleanDirectory(dir: string)` - Removes files from directories
-- `ensureDirectory(dir: string)` - Creates directories if needed
-- `getImageFiles(sourceDir: string)` - Filters supported image files
-- `transformImage(inputPath, outputPath, config)` - Core image processing
-- `main()` - CLI argument parsing and orchestration
+
+```typescript
+// Filename sanitization
+function slugify(text: string): string
+
+// Directory operations
+async function cleanDirectory(dir: string): Promise<number>
+async function ensureDirectory(dir: string): Promise<void>
+
+// Image discovery
+async function getImageFiles(sourceDir: string): Promise<string[]>
+
+// Core processing
+async function transformImage(
+  inputPath: string,
+  outputPath: string,
+  config: TransformConfig,
+  logger?: Logger
+): Promise<boolean>
+
+// Batch processing with circuit breaker
+async function processBatch(
+  files: string[],
+  sourceDir: string,
+  outputDir: string,
+  config: TransformConfig,
+  circuitBreaker: CircuitBreaker,
+  logger: Logger
+): Promise<Stats>
+
+// CLI entry
+async function main(): Promise<void>
+```
 
 **Flow:**
-1. Parse CLI arguments
-2. Handle special commands (`--help`, `--clean`)
+1. Parse CLI arguments (width, height, format, quality, etc.)
+2. Handle special commands (--help, --clean, --clear-logs)
 3. Ensure directories exist
-4. Scan for images
-5. Process each image with Sharp
-6. Report statistics (file size, compression ratio)
+4. Scan for supported images (including subdirectories)
+5. Process images with Sharp
+6. Log results and errors
+7. Report statistics
 
-### 2. Configuration (`config.ts`)
+**Special Features:**
+- **Circuit Breaker**: Stops processing after 5 consecutive failures
+- **Logger**: JSON logs to `logs/error.log` and `logs/info.log`
+- **Subdirectory Support**: Preserves folder structure
+- **SVG Handling**: Disables `withoutEnlargement` for vector graphics
 
-**Exports:**
-- `ConversionConfig` interface - TypeScript types
-- `defaultConfig` - Default settings
-- `presets` - Pre-configured settings (highQuality, web, thumbnail, etc.)
-- `getCompressionSettings()` - Format-specific compression
+---
 
-**Configuration Hierarchy:**
-1. Default config from `config.ts`
-2. Overridden by CLI arguments
-3. Format-specific compression settings applied
+## Web App Architecture
 
-### 3. Command System
+### API Routes
 
-**Command:** `bun run imgco [options]`
+#### `POST /api/convert`
 
-**Options:**
-- `-w, --width` - Width in pixels
-- `-h, --height` - Height in pixels
-- `-f, --format` - Output format (jpeg, png, webp, avif, tiff)
-- `-q, --quality` - Quality 1-100
-- `--fit` - Resize mode (cover, contain, fill, inside, outside)
-- `-s, --source` - Source directory
-- `-o, --output` - Output directory
-- `--clean` - Clean up directories
-- `--help` - Show help
+**Purpose**: Upload and convert images
+
+**Input**: `multipart/form-data`
+- `files`: File[] (required)
+- `format`: ImageFormat (default: "webp")
+- `quality`: number (default: 80)
+- `width`, `height`: number (optional)
+- `fit`: ResizeFit (default: "inside")
+
+**Process**:
+1. Validate files and parameters
+2. Save uploads to `public/uploads/temp/`
+3. Convert using `convertImage()` from `lib/converter/core.ts`
+4. Return results with download URLs
+
+**Output**:
+```json
+{
+  "success": true,
+  "results": [
+    {
+      "success": true,
+      "originalFilename": "photo.jpg",
+      "outputFilename": "1234567890-abc123-photo.webp",
+      "downloadUrl": "/api/download/1234567890-abc123-photo.webp",
+      "originalSize": 524288,
+      "convertedSize": 98304,
+      "reductionPercent": 81.25
+    }
+  ],
+  "stats": {
+    "total": 1,
+    "success": 1,
+    "failed": 0,
+    "totalOriginalSize": 524288,
+    "totalConvertedSize": 98304
+  }
+}
+```
+
+#### `GET /api/download/[filename]`
+
+**Purpose**: Download converted image
+
+**Security**:
+- Path traversal prevention (validates filename)
+- File expiration check (15 minutes max age)
+- Content-Type based on extension
+
+**Response**: Binary image with proper headers
+
+### Main UI: `app/page.tsx`
+
+**Client Component** with React state:
+
+```typescript
+const [files, setFiles] = useState<File[]>([]);           // Selected files
+const [converting, setConverting] = useState(false);      // Processing state
+const [results, setResults] = useState<ConversionResult[]>([]);  // Results
+const [format, setFormat] = useState<ImageFormat>("webp");
+const [quality, setQuality] = useState(80);
+// ... other settings
+```
+
+**Features**:
+- Drag & drop file upload
+- Format/quality/dimension settings
+- Progress indicators
+- Results display with stats
+- Individual and bulk download
+
+### File Caching: `lib/cache.ts`
+
+```typescript
+class FileCache {
+  constructor(cacheDir = "./public/uploads/temp", maxAgeMinutes = 15)
+  async cleanup(): Promise<number>  // Delete expired files
+  getFilePath(filename: string): string
+  async fileExists(filename: string): Promise<boolean>
+  async getFileAge(filename: string): Promise<number>
+}
+
+// Singleton instance
+export const fileCache = new FileCache();
+```
+
+**Auto-Cleanup**:
+- Runs every 5 minutes
+- Deletes files older than 15 minutes
+- Automatic on server start
+
+---
+
+## Shared Conversion Logic
+
+### Core Function: `lib/converter/core.ts`
+
+```typescript
+export async function convertImage(
+  inputPath: string | Buffer,    // File path or uploaded buffer
+  outputPath: string,
+  options: ConversionOptions
+): Promise<ConversionResult>
+```
+
+**Features**:
+- Accepts file path (CLI) or Buffer (Web)
+- Applies transformations from `config.ts`
+- Format-specific compression settings
+- SVG special handling (no enlargement restriction)
+- Metadata handling
+- Background color for transparency
+
+**Used By**:
+- CLI: `index.ts` → `transformImage()` → `convertImage()`
+- Web: `/api/convert` → `convertImage()`
+
+### Configuration: `config.ts`
+
+**Shared between CLI and Web**:
+
+```typescript
+export const defaultConfig = {
+  width: 1920,
+  height: 1080,
+  format: "webp",
+  quality: 80,
+  fit: "inside",
+  withoutEnlargement: true,
+  preserveAspectRatio: true,
+  sourceDir: "./raw",
+  outputDir: "./results",
+  transformations: { /* rotate, flip, grayscale, etc. */ },
+  metadata: { /* EXIF, ICC handling */ },
+  compression: { /* format-specific settings */ },
+  performance: { parallel: false, maxParallel: 4 }
+};
+
+export function getCompressionSettings(format: ImageFormat);
+```
+
+**13 Presets Available**:
+- `highQuality`, `web`, `thumbnail`, `socialMedia`, `favicon`, `retina`, `email`, `print`, `mobile`, `maxCompression`, `lossless`, `grayscale`, `speed`
+
+---
 
 ## Technology Stack
 
-### Core Dependencies
-- **Bun** - JavaScript runtime (NOT Node.js)
-- **Sharp** - High-performance image processing (libvips)
-- **TypeScript** - Type safety
+### Runtime & Build
+- **Bun**: JavaScript runtime (1.3.3+)
+- **TypeScript**: Type safety (strict mode)
+- **Biome.js**: Linting and formatting
 
-### Why Sharp?
-- C++ bindings to libvips
-- 4-5x faster than ImageMagick
-- Handles SVG, JPEG, PNG, WebP natively
-- Used by Netflix, BBC, Shopify
+### CLI
+- **Sharp**: Image processing (0.34.5)
+- **Bun APIs**: File operations (`Bun.file()`, `Bun.$`)
 
-## Key Features Explained
+### Web App
+- **Next.js**: 16.0.4 (App Router)
+- **React**: 19.2.0
+- **Tailwind CSS**: 4.1.17 (with @tailwindcss/postcss)
+- **shadcn/ui**: UI components
+- **lucide-react**: Icons
 
-### 1. URL-Safe Filename Slugification
+### Image Processing
+- **Sharp**: libvips bindings (C++)
+- **Supported Input**: JPEG, PNG, WebP, GIF, SVG, AVIF, HEIF, TIFF, BMP, JPEG XL
+- **Supported Output**: JPEG, PNG, WebP, AVIF, GIF, TIFF, HEIF, JPEG XL
 
-**Location:** `index.ts:35-45`
+---
 
-Converts filenames to web-safe format:
-- Lowercase conversion
-- Spaces → hyphens
-- Special chars → hyphens
-- Removes consecutive hyphens
+## Development Workflow
 
-**Example:**
-```typescript
-slugify("My Photo 2024!.jpg") // → "my-photo-2024"
-```
+### Running the Apps
 
-### 2. Advanced Compression Settings
-
-**Location:** `config.ts:50-108`
-
-Each format has optimized settings:
-- **WebP**: effort level 4, quality 80
-- **AVIF**: effort level 4, quality 75
-- **JPEG**: MozJPEG + progressive loading
-- **PNG**: compression level 9
-- **TIFF**: LZW compression
-
-### 3. Directory Cleanup
-
-**Location:** `index.ts:50-70`
-
-Removes all files except `.gitkeep`:
 ```bash
-bun run imgco --clean
+# Web App
+bun dev                 # Development (http://localhost:3000)
+bun run build          # Production build
+bun start              # Production server
+
+# CLI
+bun run imgco          # Convert images
+bun run imgco --help   # Show help
+
+# Code Quality
+bun run lint           # Check with Biome
+bun run format         # Format with Biome
 ```
 
-### 4. File Size Reporting
+### Making Changes
 
-**Location:** `index.ts:263-270`
+**To CLI Only**:
+1. Edit `index.ts`
+2. Update CLI argument parsing
+3. Update help text
+4. Test: `bun run imgco`
 
-Shows:
-- Original size
-- Compressed size
-- Percentage reduction
+**To Web Only**:
+1. Edit `app/page.tsx` (UI)
+2. Edit `app/api/*/route.ts` (API)
+3. Test: `bun dev`
 
-## Common Modification Tasks
+**To Both (Shared Logic)**:
+1. Edit `config.ts` (settings)
+2. Edit `lib/converter/core.ts` (conversion logic)
+3. Edit `lib/converter/types.ts` (types)
+4. Test both CLI and Web
 
-### Adding a New Image Format
+### Adding New Format
 
-1. Update `SUPPORTED_FORMATS` in `index.ts:26`
-2. Add format to `ConversionConfig` type in `config.ts:11`
-3. Add compression settings in `config.ts:50-108`
-4. Add case in `transformImage()` switch statement `index.ts:72-107`
+1. **Add type** in `lib/converter/types.ts`:
+   ```typescript
+   export type ImageFormat = "jpeg" | "png" | ... | "newformat";
+   ```
 
-**Example:**
-```typescript
-// config.ts
-format: "jpeg" | "png" | "webp" | "avif" | "tiff" | "heif";
+2. **Add compression settings** in `config.ts`:
+   ```typescript
+   newformat: { quality: 80, /* format-specific options */ }
+   ```
 
-// config.ts - compression settings
-heif: {
-  quality: 80,
-  lossless: false,
-  effort: 4,
-}
+3. **Add conversion case** in `lib/converter/core.ts`:
+   ```typescript
+   case "newformat":
+     transformer = transformer.newformat({...});
+     break;
+   ```
 
-// index.ts - transformImage()
-case "heif":
-  transformer = transformer.heif({
-    quality: config.quality || compressionSettings.quality,
-    lossless: compressionSettings.lossless,
-    effort: compressionSettings.effort,
-  });
-  break;
-```
+4. **Update UI** in `app/page.tsx`:
+   ```typescript
+   <option value="newformat">New Format</option>
+   ```
 
-### Adding a New CLI Option
+---
 
-1. Add to argument parser in `main()` function `index.ts:125-237`
-2. Update help text `index.ts:211-236`
-3. Update README.md examples
-4. If needed, add to `TransformConfig` interface `index.ts:7-14`
+## Testing
 
-### Modifying Default Settings
+### CLI Testing
 
-Edit `config.ts:42-61`:
-```typescript
-export const defaultConfig: ConversionConfig = {
-  width: 1920,        // Change default width
-  height: 1080,       // Change default height
-  format: "webp",     // Change default format
-  quality: 80,        // Change default quality
-  // ... etc
-};
-```
-
-### Adding a New Preset
-
-Edit `config.ts:110-169`:
-```typescript
-export const presets = {
-  // Add new preset
-  socialMedia: {
-    ...defaultConfig,
-    width: 1200,
-    height: 630,  // Open Graph size
-    quality: 85,
-    format: "jpeg" as const,
-  },
-};
-```
-
-## Best Practices for Modifications
-
-### 1. Always Use Bun (Not Node.js)
-- Use `bun index.ts` NOT `node index.ts`
-- Use `Bun.file()` NOT `fs.readFile()`
-- See `CLAUDE.md` for Bun-specific guidelines
-
-### 2. Maintain Type Safety
-- Update TypeScript interfaces when adding features
-- Use proper types for Sharp options
-- Export types from `config.ts` when needed
-
-### 3. Error Handling
-- Always use try-catch in async functions
-- Return boolean success indicators
-- Log errors with context (filename, path)
-
-### 4. Testing Checklist
-Before committing changes:
 ```bash
-# Test basic functionality
-bun run imgco --help
-
-# Test with sample images (if available)
+# Basic test
 bun run imgco
+
+# With options
+bun run imgco -w 800 -f webp -q 85
 
 # Test cleanup
 bun run imgco --clean
 
-# Test custom options
-bun run imgco -w 800 -q 90 -f jpeg
+# Test logs
+bun run imgco --clear-logs
 ```
 
-### 5. Documentation Updates
-When adding features, update:
-- `README.md` - User-facing documentation
-- `index.ts` help text - CLI help
-- `AGENTS.md` - This file for architecture changes
+### Web App Testing
 
-## Sharp API Reference
-
-### Common Sharp Operations
-
-```typescript
-// Basic resize
-sharp(input).resize(800, 600).toFile(output);
-
-// Preserve aspect ratio
-sharp(input)
-  .resize({ width: 800, height: 600, fit: 'inside' })
-  .toFile(output);
-
-// Format conversion
-sharp(input)
-  .webp({ quality: 80, effort: 4 })
-  .toFile(output);
-
-// Chaining operations
-sharp(input)
-  .resize(1920, 1080, { fit: 'cover' })
-  .webp({ quality: 85 })
-  .toFile(output);
-```
-
-### Fit Modes
-- `inside` - Preserve aspect ratio, fit within dimensions
-- `cover` - Preserve aspect ratio, cover dimensions (crop)
-- `contain` - Preserve aspect ratio, add padding
-- `fill` - Ignore aspect ratio, stretch
-- `outside` - Preserve aspect ratio, ensure >= dimensions
-
-## Debugging Tips
-
-### 1. Check File Paths
-```typescript
-console.log(`Input: ${inputPath}`);
-console.log(`Output: ${outputPath}`);
-```
-
-### 2. Inspect Sharp Metadata
-```typescript
-const metadata = await sharp(inputPath).metadata();
-console.log(metadata);
-```
-
-### 3. Test Compression Settings
-```typescript
-const settings = getCompressionSettings("webp");
-console.log(settings);
-```
-
-### 4. Validate CLI Args
-```typescript
-console.log("Parsed config:", config);
-console.log("Source dir:", sourceDir);
-console.log("Output dir:", outputDir);
-```
-
-## Performance Considerations
-
-### Current Implementation
-- Sequential processing (one image at a time)
-- Suitable for small to medium batches
-- Sharp itself is highly optimized (C++)
-
-### Potential Optimizations
-If processing speed becomes an issue:
-
-1. **Parallel Processing:**
-```typescript
-await Promise.all(
-  imageFiles.map(file => transformImage(file, ...))
-);
-```
-
-2. **Streaming for Large Files:**
-```typescript
-sharp(inputPath)
-  .resize(...)
-  .toBuffer()
-  .then(buffer => Bun.write(outputPath, buffer));
-```
-
-3. **Progress Indicators:**
-```typescript
-// Add progress bar library
-import { ProgressBar } from 'some-library';
-const progress = new ProgressBar(imageFiles.length);
-```
-
-## Common Issues and Solutions
-
-### Issue: "Module not found: sharp"
-**Solution:** Run `bun install`
-
-### Issue: SVG not converting
-**Solution:** Sharp requires librsvg. Check Sharp documentation for installation.
-
-### Issue: Images not found
-**Solution:**
-- Check `sourceDir` path is correct
-- Verify file extensions are supported
-- Ensure files aren't hidden
-
-### Issue: Permission denied
-**Solution:**
 ```bash
-chmod 755 raw
-chmod 755 results
+# Start server
+bun dev
+
+# Manual testing at http://localhost:3000
+- Upload single/multiple files
+- Change settings
+- Convert images
+- Download results
+- Wait 15+ minutes to test auto-cleanup
 ```
 
-### Issue: Out of memory (large batch)
-**Solution:**
-- Process in smaller batches
-- Reduce quality/dimensions
-- Implement streaming
+### API Testing
 
-## Extension Ideas
+```bash
+# Convert
+curl -X POST http://localhost:3000/api/convert \
+  -F "files=@test.jpg" \
+  -F "format=webp" \
+  -F "quality=85"
 
-### Features to Consider Adding
+# Download
+curl -O http://localhost:3000/api/download/[filename]
+```
 
-1. **Watch Mode**
-   - Monitor directory for new files
-   - Auto-convert on file add
+---
 
-2. **Batch Size Limiting**
-   - Process N images at a time
-   - Prevent memory issues
+## Common Tasks
 
-3. **Metadata Preservation**
-   - Keep EXIF data
-   - Preserve color profiles
+### Update Dependencies
 
-4. **Image Optimization Detection**
-   - Skip already optimized images
-   - Compare file sizes before processing
-
-5. **Multiple Output Formats**
-   - Generate multiple formats from one source
-   - Create responsive image sets
-
-6. **Config File Support**
-   - Load settings from `.imgcorc` file
-   - JSON/YAML configuration
-
-7. **Dry Run Mode**
-   - Preview changes without processing
-   - Show estimated file sizes
-
-8. **Watermarking**
-   - Add text/image watermarks
-   - Configurable position
-
-## Git Workflow
-
-### Files Tracked
-- `index.ts` - Main application
-- `config.ts` - Configuration
-- `package.json` - Dependencies
-- `tsconfig.json` - TypeScript config
-- `README.md` - Documentation
-- `CLAUDE.md` - Project instructions
-- `AGENTS.md` - This file
-- `.gitignore` - Git ignore rules
-
-### Files Ignored
-- `node_modules/` - Dependencies
-- `raw/*` - Source images (user data)
-- `results/*` - Output images (generated)
-- `.DS_Store` - macOS metadata
-
-### Commit Guidelines
-- Use conventional commits
-- Keep commits focused
-- Update docs with features
-
-## Environment Requirements
-
-### Required
-- Bun v1.3.3 or higher
-- TypeScript 5+
-
-### Optional
-- Git (for version control)
-- librsvg (for SVG support in Sharp)
-
-## Testing Strategy
-
-### Manual Testing
-1. Place test images in `raw/`
-2. Run `bun run imgco`
-3. Verify output in `results/`
-4. Check file sizes and quality
-
-### Test Cases to Cover
-- [ ] JPEG to WebP conversion
-- [ ] PNG to WebP conversion
-- [ ] SVG to WebP conversion
-- [ ] Resize with aspect ratio
-- [ ] Custom quality settings
-- [ ] Custom dimensions
-- [ ] Multiple format outputs
-- [ ] Directory cleanup
-- [ ] Custom source/output paths
-- [ ] Filename slugification
-- [ ] Empty directory handling
-- [ ] Invalid file handling
-
-## Support and Resources
-
-### Documentation
-- [Bun Documentation](https://bun.sh/docs)
-- [Sharp Documentation](https://sharp.pixelplumbing.com/)
-- [TypeScript Handbook](https://www.typescriptlang.org/docs/)
-
-### Related Projects
-- ImageMagick - Alternative image processor
-- VIPS - Library Sharp uses
-- Squoosh - Web-based image compressor
-
-## Project Maintenance
-
-### Dependency Updates
 ```bash
 bun update
 ```
 
-### Check for Outdated Packages
+### Fix Linting Issues
+
 ```bash
-bun outdated
+bun run lint          # Check
+bun run format        # Auto-fix
 ```
 
-### Version Bumping
-Update `package.json` version following semantic versioning:
-- MAJOR.MINOR.PATCH
-- Breaking.Feature.Fix
+### Debug Issues
+
+**CLI**:
+- Check `logs/error.log` for errors
+- Use `console.log()` in `index.ts`
+- Run with `bun --inspect index.ts`
+
+**Web**:
+- Check browser console
+- Check terminal output
+- Inspect Network tab for API calls
+
+### Clean Everything
+
+```bash
+bun run imgco --clean        # Clean raw/results
+bun run imgco --clear-logs   # Clear logs
+rm -rf public/uploads/temp/* # Clear web uploads
+rm -rf .next                 # Clear Next.js cache
+```
 
 ---
 
-**Last Updated:** 2025-11-25
-**Bun Version:** 1.3.3
-**Sharp Version:** 0.34.5
-**Agent Type:** Claude Code (Sonnet 4.5)
+## Key Concepts
+
+### Circuit Breaker Pattern
+
+**Purpose**: Prevent cascading failures in batch processing
+
+**States**:
+- `CLOSED`: Normal operation
+- `OPEN`: Too many failures, stop processing
+- `HALF_OPEN`: Testing if system recovered
+
+**Thresholds**:
+- Opens after 5 consecutive failures
+- Attempts recovery after 30 seconds
+
+**Implementation**: `class CircuitBreaker` in `index.ts`
+
+### File Caching (Web)
+
+**Purpose**: Auto-delete uploaded files for privacy
+
+**Mechanism**:
+- Files stored in `public/uploads/temp/`
+- Cleanup runs every 5 minutes
+- Deletes files older than 15 minutes
+- Singleton pattern: `fileCache`
+
+### SVG Handling
+
+**Issue**: Default `withoutEnlargement: true` prevents SVG upscaling
+
+**Solution**: Detect SVG and disable `withoutEnlargement`
+
+```typescript
+const isSvg = extname(inputPath).toLowerCase() === ".svg";
+const allowEnlargement = isSvg ? false : defaultConfig.withoutEnlargement;
+```
+
+---
+
+## File Organization
+
+### What's Tracked (Git)
+
+- **Source**: `index.ts`, `config.ts`, `app/**`, `lib/**`, `components/**`
+- **Config**: `package.json`, `tsconfig.json`, `*.config.ts`, `biome.json`
+- **Docs**: `README.md`, `AGENTS.md`, `API.md`, `CLAUDE.md`
+
+### What's Ignored
+
+- `node_modules/`, `.next/`, `dist/`, `build/`
+- `raw/*`, `results/*` (except `.gitkeep`)
+- `logs/*` (except `.gitkeep`)
+- `public/uploads/*` (except `.gitkeep`)
+
+---
+
+## Performance Notes
+
+- **Sharp**: 4-5x faster than ImageMagick
+- **Parallel Processing**: CLI supports up to `maxParallel` concurrent conversions
+- **SVG**: No size penalties, rasterizes at any dimension
+- **WebP**: Best balance of speed and quality
+- **AVIF**: Best compression, slower processing
+
+---
+
+## Deployment
+
+### Web App on Vercel
+
+```bash
+vercel
+```
+
+### Docker
+
+```dockerfile
+FROM oven/bun:latest
+WORKDIR /app
+COPY . .
+RUN bun install && bun run build
+CMD ["bun", "start"]
+```
+
+### Environment Variables
+
+None required for basic operation. Optional:
+- `NODE_ENV`: production/development
+- `PORT`: Server port (default: 3000)
+
+---
+
+## Troubleshooting
+
+### "Module not found"
+
+```bash
+rm -rf node_modules
+bun install
+```
+
+### Sharp Installation Fails
+
+```bash
+bun install sharp --force
+```
+
+### Web App CSS Issues
+
+Make sure you have `@tailwindcss/postcss`:
+
+```bash
+bun add -D @tailwindcss/postcss
+```
+
+### Files Not Auto-Deleting
+
+Check `lib/cache.ts` - ensure cleanup interval is running.
+
+---
+
+## Documentation
+
+- **[README.md](./README.md)** - User guide and quick start
+- **[API.md](./API.md)** - Complete API reference
+- **[CLAUDE.md](./CLAUDE.md)** - Quick development reference
+- **[AGENTS.md](./AGENTS.md)** - This file
+
+---
+
+## Version Info
+
+- **Last Updated**: 2024-11-26
+- **Bun**: 1.3.3+
+- **Sharp**: 0.34.5
+- **Next.js**: 16.0.4
+- **React**: 19.2.0
+- **Node**: 18+ or Bun runtime
+
+---
+
+**Status**: Production ready ✅

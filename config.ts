@@ -188,7 +188,7 @@ export const defaultConfig: ConversionConfig = {
     jpeg: {
       quality: 80,
       progressive: true, // Progressive JPEGs load faster on web
-      mozjpeg: true,     // Use MozJPEG for better compression
+      mozjpeg: true, // Use MozJPEG for better compression
       chromaSubsampling: "4:2:0", // Good balance of quality/size
       optimizeCoding: true,
     },
@@ -205,17 +205,17 @@ export const defaultConfig: ConversionConfig = {
     // WebP settings (recommended)
     webp: {
       quality: 80,
-      lossless: false,  // Set to true for lossless compression
-      effort: 4,        // 0-6, 4 is a good balance
+      lossless: false, // Set to true for lossless compression
+      effort: 4, // 0-6, 4 is a good balance
       nearLossless: false,
       smartSubsample: true,
     },
 
     // AVIF settings (best compression, slower)
     avif: {
-      quality: 75,      // AVIF can use lower quality for same visual quality
+      quality: 75, // AVIF can use lower quality for same visual quality
       lossless: false,
-      effort: 4,        // 0-9, 4 is a good balance
+      effort: 4, // 0-9, 4 is a good balance
       chromaSubsampling: "4:2:0",
     },
 
@@ -228,9 +228,9 @@ export const defaultConfig: ConversionConfig = {
 
     // GIF settings (for animated GIFs)
     gif: {
-      colors: 256,      // Max colors (2-256)
-      dither: 1.0,      // Full dithering for better quality
-      effort: 7,        // CPU effort (1-10)
+      colors: 256, // Max colors (2-256)
+      dither: 1.0, // Full dithering for better quality
+      effort: 7, // CPU effort (1-10)
     },
 
     // HEIF/HEIC settings (Apple format)
@@ -245,7 +245,7 @@ export const defaultConfig: ConversionConfig = {
     jxl: {
       quality: 80,
       lossless: false,
-      effort: 7,        // 3-9, higher = better compression
+      effort: 7, // 3-9, higher = better compression
       decodingSpeed: 0, // 0-4, 0 = optimize for size
     },
   },
@@ -268,8 +268,20 @@ export const presets = {
       ...defaultConfig.compression,
       webp: { quality: 95, lossless: false, effort: 6, nearLossless: false, smartSubsample: true },
       avif: { quality: 90, lossless: false, effort: 6, chromaSubsampling: "4:4:4" },
-      jpeg: { quality: 95, progressive: true, mozjpeg: true, chromaSubsampling: "4:4:4", optimizeCoding: true },
-      png: { quality: 95, compressionLevel: 9, progressive: true, palette: false, adaptiveFiltering: true },
+      jpeg: {
+        quality: 95,
+        progressive: true,
+        mozjpeg: true,
+        chromaSubsampling: "4:4:4",
+        optimizeCoding: true,
+      },
+      png: {
+        quality: 95,
+        compressionLevel: 9,
+        progressive: true,
+        palette: false,
+        adaptiveFiltering: true,
+      },
     },
   },
 
@@ -283,7 +295,13 @@ export const presets = {
       ...defaultConfig.compression,
       webp: { quality: 75, lossless: false, effort: 4, nearLossless: false, smartSubsample: true },
       avif: { quality: 70, lossless: false, effort: 4, chromaSubsampling: "4:2:0" },
-      jpeg: { quality: 75, progressive: true, mozjpeg: true, chromaSubsampling: "4:2:0", optimizeCoding: true },
+      jpeg: {
+        quality: 75,
+        progressive: true,
+        mozjpeg: true,
+        chromaSubsampling: "4:2:0",
+        optimizeCoding: true,
+      },
     },
   },
 
@@ -308,7 +326,13 @@ export const presets = {
       ...defaultConfig.compression,
       webp: { quality: 60, lossless: false, effort: 6, nearLossless: false, smartSubsample: true },
       avif: { quality: 55, lossless: false, effort: 6, chromaSubsampling: "4:2:0" },
-      jpeg: { quality: 60, progressive: true, mozjpeg: true, chromaSubsampling: "4:2:0", optimizeCoding: true },
+      jpeg: {
+        quality: 60,
+        progressive: true,
+        mozjpeg: true,
+        chromaSubsampling: "4:2:0",
+        optimizeCoding: true,
+      },
     },
   },
 
@@ -324,7 +348,13 @@ export const presets = {
     compression: {
       ...defaultConfig.compression,
       webp: { quality: 100, lossless: true, effort: 6, nearLossless: false, smartSubsample: true },
-      png: { quality: 100, compressionLevel: 9, progressive: true, palette: false, adaptiveFiltering: true },
+      png: {
+        quality: 100,
+        compressionLevel: 9,
+        progressive: true,
+        palette: false,
+        adaptiveFiltering: true,
+      },
       avif: { quality: 100, lossless: true, effort: 6, chromaSubsampling: "4:4:4" },
     },
   },
@@ -339,7 +369,13 @@ export const presets = {
     format: "jpeg" as const,
     compression: {
       ...defaultConfig.compression,
-      jpeg: { quality: 85, progressive: true, mozjpeg: true, chromaSubsampling: "4:2:0", optimizeCoding: true },
+      jpeg: {
+        quality: 85,
+        progressive: true,
+        mozjpeg: true,
+        chromaSubsampling: "4:2:0",
+        optimizeCoding: true,
+      },
     },
   },
 
@@ -357,7 +393,14 @@ export const presets = {
     },
     compression: {
       ...defaultConfig.compression,
-      png: { quality: 90, compressionLevel: 9, progressive: false, palette: true, colors: 256, adaptiveFiltering: true },
+      png: {
+        quality: 90,
+        compressionLevel: 9,
+        progressive: false,
+        palette: true,
+        colors: 256,
+        adaptiveFiltering: true,
+      },
     },
   },
 
@@ -383,7 +426,13 @@ export const presets = {
     format: "jpeg" as const,
     compression: {
       ...defaultConfig.compression,
-      jpeg: { quality: 70, progressive: false, mozjpeg: true, chromaSubsampling: "4:2:0", optimizeCoding: true },
+      jpeg: {
+        quality: 70,
+        progressive: false,
+        mozjpeg: true,
+        chromaSubsampling: "4:2:0",
+        optimizeCoding: true,
+      },
     },
   },
 
@@ -441,7 +490,13 @@ export const presets = {
       ...defaultConfig.compression,
       webp: { quality: 70, lossless: false, effort: 1, nearLossless: false, smartSubsample: true },
       avif: { quality: 65, lossless: false, effort: 1, chromaSubsampling: "4:2:0" },
-      jpeg: { quality: 70, progressive: true, mozjpeg: false, chromaSubsampling: "4:2:0", optimizeCoding: false },
+      jpeg: {
+        quality: 70,
+        progressive: true,
+        mozjpeg: false,
+        chromaSubsampling: "4:2:0",
+        optimizeCoding: false,
+      },
     },
   },
 };

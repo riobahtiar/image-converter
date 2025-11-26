@@ -1,176 +1,311 @@
 # Image Converter
 
-High-performance image transformation tool built with Bun and Sharp. Converts SVG, JPEG, JPG, and PNG images to optimized WebP format.
+High-performance image conversion tool with **CLI** and **Web App** interfaces. Convert images to WebP, AVIF, JPEG, PNG, and more with advanced compression.
 
-## Features
+Built with [Bun](https://bun.sh) and [Sharp](https://sharp.pixelplumbing.com/).
 
-- Batch process multiple images at once
-- Convert SVG/JPEG/JPG/PNG to WebP (default)
-- Support for multiple output formats (JPEG, PNG, WebP, AVIF, TIFF)
-- Automatic image resizing with aspect ratio preservation
-- Quality control and optimization
-- File size comparison and compression statistics
-- **URL-safe filenames** - Automatically slugifies output filenames
-- **Advanced compression settings** - Format-specific optimization via config file
-- **Cleanup command** - Easily clear processed files
-- Fast processing with Sharp (C++ bindings)
+---
 
-## Installation
+## 🚀 Quick Start
+
+### Web App (Browser)
+```bash
+bun dev
+# Open http://localhost:3000
+```
+- Drag & drop images
+- Bulk conversion
+- Download results
+- Auto-cleanup after 15 minutes
+
+### CLI (Terminal)
+```bash
+# Place images in raw/ folder
+bun run imgco
+
+# Custom options
+bun run imgco -w 800 -f webp -q 85
+```
+
+---
+
+## ✨ Features
+
+- **Multiple formats**: JPEG, PNG, WebP, AVIF, GIF, TIFF, HEIF, SVG
+- **Bulk processing**: Convert multiple images at once
+- **Smart compression**: Format-specific optimization
+- **Custom dimensions**: Resize with aspect ratio control
+- **Two interfaces**: Web UI or command line
+- **Fast**: Powered by Sharp (libvips C++ library)
+- **Auto-cleanup**: Web app deletes files after 15 minutes
+
+---
+
+## 📦 Installation
 
 ```bash
 bun install
 ```
 
-## Quick Start
+---
 
-1. Place your images in the `raw` folder
-2. Run the converter:
+## 🖥️ CLI Usage
+
+### Basic Commands
 
 ```bash
+# Convert with defaults (WebP, 80% quality)
 bun run imgco
-```
 
-3. Find your converted images in the `results` folder
+# Custom format and quality
+bun run imgco -f avif -q 85
 
-By default, this converts all images to WebP format at 1920x1080 (max dimensions) with 80% quality.
+# Resize images
+bun run imgco -w 1920 -h 1080
 
-## Usage
-
-### Basic Usage
-
-Convert all images with default settings (to WebP):
-```bash
-bun run imgco
-```
-
-### Custom Options
-
-```bash
-# Convert to JPEG with 90% quality
-bun run imgco --format jpeg --quality 90
-
-# Resize to specific dimensions
-bun run imgco --width 800 --height 600
-
-# Use custom source and output directories
-bun run imgco --source ./photos --output ./optimized
-
-# Convert to WebP with custom quality
-bun run imgco -f webp -q 85 -w 1200
-```
-
-### Command Line Options
-
-```
--w, --width <number>       Width in pixels (default: 1920)
--h, --height <number>      Height in pixels (default: 1080)
--f, --format <format>      Output format: jpeg, png, webp, avif, tiff (default: webp)
--q, --quality <number>     Quality 1-100 (default: 80)
---fit <mode>               Resize fit mode: cover, contain, fill, inside, outside (default: inside)
--s, --source <path>        Source directory (default: ./raw)
--o, --output <path>        Output directory (default: ./results)
---clean [source] [output]  Clean up files in directories
---help                     Show help message
-```
-
-### Cleanup Command
-
-Remove all processed files from directories:
-
-```bash
-# Clean default directories (raw and results)
+# Clean up directories
 bun run imgco --clean
 
-# Clean specific directories
-bun run imgco --clean ./raw ./results
+# Clear logs
+bun run imgco --clear-logs
+
+# Show help
+bun run imgco --help
 ```
 
-### Supported Input Formats
+### Options
 
-- JPEG (.jpg, .jpeg)
-- PNG (.png)
-- WebP (.webp)
-- SVG (.svg)
-- GIF (.gif)
-- TIFF (.tiff)
-- AVIF (.avif)
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-w, --width` | Width in pixels | auto |
+| `-h, --height` | Height in pixels | auto |
+| `-f, --format` | Output format (jpeg, png, webp, avif, etc.) | webp |
+| `-q, --quality` | Quality 1-100 | 80 |
+| `--fit` | Resize mode (cover, contain, fill, inside, outside) | inside |
+| `-s, --source` | Source directory | ./raw |
+| `-o, --output` | Output directory | ./results |
+| `--clean` | Clean directories | - |
+| `--clear-logs` | Clear log files | - |
 
-### Fit Modes
+### Examples
 
-- `inside` (default) - Preserve aspect ratio, fit within dimensions
-- `cover` - Preserve aspect ratio, cover dimensions (may crop)
-- `contain` - Preserve aspect ratio, ensure image contains dimensions
-- `fill` - Ignore aspect ratio, stretch to exact dimensions
-- `outside` - Preserve aspect ratio, ensure image is outside dimensions
+```bash
+# Convert SVG to PNG at 512x512
+bun run imgco -w 512 -h 512 -f png
 
-## Configuration
+# High quality WebP
+bun run imgco -f webp -q 95
 
-### Default Settings
+# Thumbnails with crop
+bun run imgco -w 300 -h 300 --fit cover
 
-All default settings can be modified in `config.ts`:
+# Different directories
+bun run imgco -s ./photos -o ./optimized
+```
+
+---
+
+## 🌐 Web App Usage
+
+### Start Server
+
+```bash
+# Development
+bun dev
+
+# Production
+bun run build
+bun start
+```
+
+### Features
+
+- **Drag & Drop**: Upload multiple files
+- **Live Preview**: See file sizes and compression stats
+- **Bulk Download**: Download all converted images
+- **Settings**: Format, quality, dimensions, resize mode
+- **Progress**: Real-time conversion progress
+- **Auto-Cleanup**: Files deleted after 15 minutes
+
+### API Endpoints
+
+**Convert Images**
+```bash
+POST /api/convert
+Content-Type: multipart/form-data
+
+# Parameters: files, format, quality, width, height, fit
+```
+
+**Download Image**
+```bash
+GET /api/download/[filename]
+```
+
+See [API.md](./API.md) for complete documentation.
+
+---
+
+## 📁 Supported Formats
+
+### Input
+JPEG, PNG, WebP, GIF, **SVG**, AVIF, HEIF, TIFF, BMP, JPEG XL
+
+### Output
+JPEG, PNG, WebP, AVIF, GIF, TIFF, HEIF, JPEG XL
+
+### Format Guide
+
+| Format | Best For | Compression | Browser Support |
+|--------|----------|-------------|-----------------|
+| **WebP** | Web images | Excellent | 95%+ |
+| **AVIF** | Modern web | Best | 75%+ |
+| **JPEG** | Photos | Good | 100% |
+| **PNG** | Graphics with transparency | Lossless | 100% |
+| **SVG** → Raster | Icons, logos | - | Source only |
+
+---
+
+## ⚙️ Configuration
+
+Edit `config.ts` to change defaults:
 
 ```typescript
-// config.ts
 export const defaultConfig = {
-  width: 1920,
-  height: 1080,
   format: "webp",
   quality: 80,
   fit: "inside",
   sourceDir: "./raw",
   outputDir: "./results",
-  // ... and more compression settings
+  // ... advanced compression settings
 };
 ```
 
-Modify this file to change default behavior without using CLI arguments every time.
+### Presets Available
 
-### URL-Safe Filenames
+- `highQuality` - Maximum quality (Q95)
+- `web` - Optimized for web (Q80)
+- `thumbnail` - Small previews (300x300)
+- `maxCompression` - Smallest files (Q60)
+- `lossless` - No quality loss
 
-Output filenames are automatically slugified for URL safety:
+---
 
-- `My Photo 2024!.jpg` → `my-photo-2024.webp`
-- `Product Image (1).png` → `product-image-1.webp`
-- `Logo @Company.svg` → `logo-company.webp`
+## 🔧 Advanced Features
 
-All special characters, spaces, and uppercase letters are converted to lowercase with hyphens.
-
-### Advanced Compression
-
-Each format has optimized compression settings in `config.ts`:
-
-- **WebP**: effort level 4 (balance speed/quality)
-- **AVIF**: effort level 4, quality 75 (best for modern browsers)
-- **JPEG**: MozJPEG + progressive loading
-- **PNG**: compression level 9, progressive
-
-You can also use presets like `highQuality`, `web`, `thumbnail`, `maxCompression`, or `lossless`.
-
-## Examples
-
-Convert SVG/PNG/JPEG to WebP with high quality:
+### Subdirectory Support
 ```bash
-bun run imgco --quality 95
+# CLI automatically preserves folder structure
+raw/
+  folder1/image.jpg
+  folder2/subfolder/photo.png
+
+# Converts to:
+results/
+  folder1/image.webp
+  folder2/subfolder/photo.webp
 ```
 
-Create thumbnails:
+### SVG Conversion
+SVG files can be rasterized to any size (no upscale limits):
 ```bash
-bun run imgco --width 300 --height 300 --fit cover
+bun run imgco -w 2048 -f png  # SVG → 2048px PNG
 ```
 
-Convert to AVIF (modern format with better compression):
+### Logging (CLI)
+Errors are logged to `logs/error.log` with timestamps:
 ```bash
-bun run imgco --format avif --quality 75
+bun run imgco --clear-logs  # Clear old logs
 ```
 
-Clean up all processed files:
+### Circuit Breaker (CLI)
+Automatic failure protection - stops processing if too many errors occur.
+
+---
+
+## 🛠️ Development
+
 ```bash
-bun run imgco --clean
+# Run web app
+bun dev
+
+# Run CLI
+bun run imgco
+
+# Lint code
+bun run lint
+
+# Format code
+bun run format
 ```
 
-## Technology
+### Project Structure
 
-- **Bun**: Fast JavaScript runtime
-- **Sharp**: High-performance image processing library (libvips)
+```
+image-converter/
+├── index.ts              # CLI application
+├── config.ts             # Shared configuration
+├── app/                  # Next.js web app
+│   ├── api/             # API routes
+│   └── page.tsx         # Main UI
+├── lib/                  # Shared conversion logic
+│   └── converter/       # Core image processing
+├── components/ui/        # UI components
+└── public/uploads/       # Temporary files (web)
+```
 
-This project was created using Bun v1.3.3. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+---
+
+## 📖 Documentation
+
+- **[AGENTS.md](./AGENTS.md)** - Architecture and technical details
+- **[API.md](./API.md)** - API reference for web app
+- **[CLAUDE.md](./CLAUDE.md)** - Quick development reference
+
+---
+
+## 🚀 Deployment
+
+### Vercel (Web App)
+```bash
+vercel
+```
+
+### Docker
+```dockerfile
+FROM oven/bun:latest
+WORKDIR /app
+COPY . .
+RUN bun install && bun run build
+CMD ["bun", "start"]
+```
+
+---
+
+## 🤝 Contributing
+
+1. Follow existing code style
+2. Use Biome for linting: `bun run lint`
+3. Format code: `bun run format`
+4. Test both CLI and web app
+
+---
+
+## 📝 License
+
+MIT
+
+---
+
+## 🙏 Credits
+
+Built with:
+- [Bun](https://bun.sh) - Fast JavaScript runtime
+- [Sharp](https://sharp.pixelplumbing.com/) - High-performance image processing
+- [Next.js](https://nextjs.org) - React framework
+- [Tailwind CSS](https://tailwindcss.com) - Utility-first CSS
+- [shadcn/ui](https://ui.shadcn.com/) - Beautiful components
+
+---
+
+**Made with ❤️ using Bun and Sharp**
