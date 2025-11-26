@@ -35,6 +35,8 @@ export interface ConversionOptions {
   fit: ResizeFit;
   /** Preserve aspect ratio */
   preserveAspectRatio?: boolean;
+  /** Original filename (for SVG detection when input is a Buffer) */
+  originalFilename?: string;
 }
 
 /**

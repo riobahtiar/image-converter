@@ -43,11 +43,18 @@ const SUPPORTED_FORMATS = [
  * Returns JSON with conversion results and download URLs
  */
 export async function POST(request: NextRequest) {
+  const requestStartTime = Date.now();
+  console.log("[SERVER] Conversion request received", {
+    timestamp: new Date().toISOString(),
+    userAgent: request.headers.get("user-agent"),
+  });
+
   try {
     // ========================================
     // Step 1: Session Management
     // ========================================
     const session = await getSession();
+    console.log("[SERVER] Session initialized", { sessionId: session.sessionId });
 
     // ========================================
     // Step 2: Rate Limiting (Conversion-Specific)
@@ -77,16 +84,25 @@ export async function POST(request: NextRequest) {
     // Step 3: Parse Form Data
     // ========================================
     const formData = await request.formData();
+    console.log("[SERVER] Form data parsed");
 
     // Get uploaded files
     const files = formData.getAll("files") as File[];
 
     if (files.length === 0) {
+      console.warn("[SERVER] No files uploaded");
       return NextResponse.json({ error: "No files uploaded" }, { status: 400 });
     }
 
+    console.log("[SERVER] Files received", {
+      fileCount: files.length,
+      fileNames: files.map((f) => f.name),
+      totalSize: files.reduce((sum, f) => sum + f.size, 0),
+    });
+
     // Validate file count (max 50 files per request)
     if (files.length > 50) {
+      console.warn("[SERVER] Too many files", { fileCount: files.length });
       return NextResponse.json(
         { error: "Too many files. Maximum 50 files per request." },
         { status: 400 }
@@ -166,10 +182,19 @@ export async function POST(request: NextRequest) {
     // Step 6: Process Each File
     // ========================================
     const results = [];
+    console.log("[SERVER] Starting file processing", { fileCount: files.length });
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (!file) continue;
+
+      const fileStartTime = Date.now();
+      console.log("[SERVER] Processing file", {
+        index: i + 1,
+        total: files.length,
+        filename: file.name,
+        size: file.size,
+      });
 
       try {
         // Get settings for this file (per-file or bulk)
@@ -181,6 +206,11 @@ export async function POST(request: NextRequest) {
           fit: bulkFit,
         };
 
+        console.log("[SERVER] File conversion settings", {
+          filename: file.name,
+          settings: fileSettings,
+        });
+
         // Generate unique filename for session directory
         const uniqueFilename = generateUniqueFilename(file.name);
         const inputPath = join(sessionDir, uniqueFilename);
@@ -189,6 +219,11 @@ export async function POST(request: NextRequest) {
         const bytes = await file.arrayBuffer();
         const buffer = Buffer.from(bytes);
         await writeFile(inputPath, buffer);
+        console.log("[SERVER] File saved to disk", {
+          filename: file.name,
+          path: inputPath,
+          size: buffer.length,
+        });
 
         // Generate output filename: preserve original name, only change extension
         const fileBaseName = basename(file.name, extname(file.name));
@@ -198,6 +233,13 @@ export async function POST(request: NextRequest) {
         const uniqueStoredFilename = generateUniqueFilename(downloadFilename);
         const outputPath = join(sessionDir, uniqueStoredFilename);
 
+        console.log("[SERVER] Starting image conversion", {
+          filename: file.name,
+          inputPath,
+          outputPath,
+          format: fileSettings.format,
+        });
+
         // Convert image with file-specific settings
         const result = await convertImage(buffer, outputPath, {
           format: fileSettings.format,
@@ -206,6 +248,17 @@ export async function POST(request: NextRequest) {
           height: fileSettings.height,
           fit: fileSettings.fit,
           preserveAspectRatio: true,
+          originalFilename: file.name, // Pass filename for SVG detection
+        });
+
+        const fileDuration = Date.now() - fileStartTime;
+        console.log("[SERVER] File conversion completed", {
+          filename: file.name,
+          success: result.success,
+          duration: `${fileDuration}ms`,
+          originalSize: result.originalSize,
+          convertedSize: result.convertedSize,
+          reductionPercent: result.reductionPercent,
         });
 
         if (result.success) {
@@ -251,6 +304,12 @@ export async function POST(request: NextRequest) {
         // Clean up input file
         await require("node:fs/promises").unlink(inputPath);
       } catch (error) {
+        const fileDuration = Date.now() - fileStartTime;
+        console.error("[SERVER] File conversion failed", {
+          filename: file.name,
+          error: error instanceof Error ? error.message : "Unknown error",
+          duration: `${fileDuration}ms`,
+        });
         results.push({
           success: false,
           originalFilename: file.name,
@@ -258,6 +317,15 @@ export async function POST(request: NextRequest) {
         });
       }
     }
+
+    const totalDuration = Date.now() - requestStartTime;
+    console.log("[SERVER] All files processed", {
+      totalFiles: files.length,
+      successCount: results.filter((r) => r.success).length,
+      failedCount: results.filter((r) => !r.success).length,
+      totalDuration: `${totalDuration}ms`,
+      avgDurationPerFile: `${Math.round(totalDuration / files.length)}ms`,
+    });
 
     // Calculate statistics
     const stats = {

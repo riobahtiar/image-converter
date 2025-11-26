@@ -27,8 +27,22 @@ export async function convertImage(
   outputPath: string,
   options: ConversionOptions
 ): Promise<ConversionResult> {
+  const isBuffer = typeof inputPath !== "string";
+  const inputType = isBuffer ? "Buffer" : "File Path";
+  const filename = isBuffer ? options.originalFilename || "unknown" : inputPath;
+  const startTime = Date.now();
+
+  console.log("[CONVERSION] Starting image conversion", {
+    inputType,
+    filename,
+    outputPath,
+    format: options.format,
+    quality: options.quality,
+    dimensions: { width: options.width, height: options.height },
+    fit: options.fit,
+  });
+
   try {
-    const startTime = Date.now();
 
     // Get original file size
     let originalSize = 0;
@@ -37,6 +51,12 @@ export async function convertImage(
     } else {
       originalSize = inputPath.length;
     }
+
+    console.log("[CONVERSION] Input file info", {
+      filename,
+      originalSize,
+      inputType,
+    });
 
     // Initialize Sharp transformer
     let transformer = sharp(inputPath);
@@ -91,9 +111,22 @@ export async function convertImage(
       }
     }
 
-    // Apply background color for transparency
-    if (defaultConfig.background) {
+    // Apply background color only for formats that don't support transparency
+    // Formats that support transparency: PNG, WebP, AVIF, GIF, TIFF, JPEG XL
+    // Formats that don't: JPEG, HEIF
+    const formatsWithoutTransparency = ["jpeg", "heif"];
+    if (defaultConfig.background && formatsWithoutTransparency.includes(options.format)) {
+      console.log("[CONVERSION] Applying background color (format doesn't support transparency)", {
+        filename,
+        format: options.format,
+        background: defaultConfig.background,
+      });
       transformer = transformer.flatten({ background: defaultConfig.background });
+    } else {
+      console.log("[CONVERSION] Preserving transparency", {
+        filename,
+        format: options.format,
+      });
     }
 
     // Handle metadata
@@ -115,16 +148,29 @@ export async function convertImage(
 
     // Resize if dimensions provided
     if (options.width || options.height) {
+      // Detect SVG files - check both inputPath (for CLI) and originalFilename (for web uploads)
+      const isSvg =
+        (typeof inputPath === "string" && extname(inputPath).toLowerCase() === ".svg") ||
+        (options.originalFilename && extname(options.originalFilename).toLowerCase() === ".svg");
+
       // For SVG files, always allow enlargement since they're vector graphics
       // For raster images, respect the withoutEnlargement setting
-      const isSvg = typeof inputPath === "string" && extname(inputPath).toLowerCase() === ".svg";
-      const allowEnlargement = isSvg ? false : defaultConfig.withoutEnlargement;
+      const withoutEnlargement = isSvg ? false : defaultConfig.withoutEnlargement;
+
+      console.log("[CONVERSION] Applying resize", {
+        filename,
+        width: options.width,
+        height: options.height,
+        fit: options.fit || "inside",
+        isSvg,
+        withoutEnlargement,
+      });
 
       transformer = transformer.resize({
         width: options.width,
         height: options.height,
         fit: options.fit || "inside",
-        withoutEnlargement: allowEnlargement,
+        withoutEnlargement,
       });
     }
 
@@ -208,6 +254,7 @@ export async function convertImage(
     }
 
     // Save output file
+    console.log("[CONVERSION] Saving output file", { filename, outputPath });
     await transformer.toFile(outputPath);
 
     // Get converted file size
@@ -216,7 +263,16 @@ export async function convertImage(
     // Calculate reduction
     const reductionPercent = (1 - convertedSize / originalSize) * 100;
 
-    const _processingTime = Date.now() - startTime;
+    const processingTime = Date.now() - startTime;
+
+    console.log("[CONVERSION] Conversion completed successfully", {
+      filename,
+      originalSize,
+      convertedSize,
+      reductionPercent: `${reductionPercent.toFixed(2)}%`,
+      processingTime: `${processingTime}ms`,
+      outputPath,
+    });
 
     return {
       success: true,
@@ -226,6 +282,12 @@ export async function convertImage(
       reductionPercent,
     };
   } catch (error) {
+    const processingTime = Date.now() - startTime;
+    console.error("[CONVERSION] Conversion failed", {
+      filename,
+      error: error instanceof Error ? error.message : String(error),
+      processingTime: `${processingTime}ms`,
+    });
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),

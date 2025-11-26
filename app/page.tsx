@@ -183,6 +183,11 @@ export default function Home() {
   const handleConvert = async () => {
     if (files.length === 0) return;
 
+    console.log("[BROWSER] Starting conversion process", {
+      fileCount: files.length,
+      timestamp: new Date().toISOString(),
+    });
+
     setConverting(true);
     setProgress(0);
     setResults([]);
@@ -194,11 +199,28 @@ export default function Home() {
       for (const [index, fileWithSettings] of files.entries()) {
         formData.append("files", fileWithSettings.file);
         formData.append(`settings[${index}]`, JSON.stringify(fileWithSettings.settings));
+        console.log("[BROWSER] Preparing file for upload", {
+          filename: fileWithSettings.file.name,
+          size: fileWithSettings.file.size,
+          settings: fileWithSettings.settings,
+        });
       }
 
+      console.log("[BROWSER] Sending conversion request to server", {
+        fileCount: files.length,
+        endpoint: "/api/convert",
+      });
+
+      const requestStartTime = Date.now();
       const response = await fetch("/api/convert", {
         method: "POST",
         body: formData,
+      });
+
+      const requestDuration = Date.now() - requestStartTime;
+      console.log("[BROWSER] Received response from server", {
+        status: response.status,
+        duration: `${requestDuration}ms`,
       });
 
       if (!response.ok) {
@@ -206,14 +228,23 @@ export default function Home() {
       }
 
       const data = await response.json();
+      console.log("[BROWSER] Conversion completed", {
+        successCount: data.stats?.success || 0,
+        failedCount: data.stats?.failed || 0,
+        totalSize: data.stats?.totalOriginalSize || 0,
+        convertedSize: data.stats?.totalConvertedSize || 0,
+        sessionId: data.sessionId,
+      });
+
       setResults(data.results);
       setStats(data.stats);
       setProgress(100);
     } catch (error) {
-      console.error("Conversion error:", error);
+      console.error("[BROWSER] Conversion error:", error);
       alert("Conversion failed. Please try again.");
     } finally {
       setConverting(false);
+      console.log("[BROWSER] Conversion process finished");
     }
   };
 

@@ -494,8 +494,11 @@ async function transformImage(
       }
     }
 
-    // Apply background color for transparency
-    if (defaultConfig.background) {
+    // Apply background color only for formats that don't support transparency
+    // Formats that support transparency: PNG, WebP, AVIF, GIF, TIFF, JPEG XL
+    // Formats that don't: JPEG, HEIF
+    const formatsWithoutTransparency = ["jpeg", "heif"];
+    if (defaultConfig.background && formatsWithoutTransparency.includes(config.format || "webp")) {
       transformer = transformer.flatten({ background: defaultConfig.background });
     }
 
@@ -521,13 +524,13 @@ async function transformImage(
       // For SVG files, always allow enlargement since they're vector graphics
       // For raster images, respect the withoutEnlargement setting
       const isSvg = extname(inputPath).toLowerCase() === ".svg";
-      const allowEnlargement = isSvg ? false : defaultConfig.withoutEnlargement;
+      const withoutEnlargement = isSvg ? false : defaultConfig.withoutEnlargement;
 
       transformer = transformer.resize({
         width: config.width,
         height: config.height,
         fit: config.fit || "inside",
-        withoutEnlargement: allowEnlargement,
+        withoutEnlargement,
       });
     }
 
