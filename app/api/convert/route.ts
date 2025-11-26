@@ -5,6 +5,9 @@ import { fileCache } from "@/lib/cache";
 import { convertImage, slugifyFilename } from "@/lib/converter";
 import type { ImageFormat, ResizeFit } from "@/lib/converter/types";
 import { generateUniqueFilename } from "@/lib/utils";
+import { getSession } from "@/lib/session";
+import { checkRateLimit, conversionRateLimiter } from "@/lib/ratelimit";
+import { validateImageFile, MAX_FILE_SIZE } from "@/lib/fileValidation";
 
 /**
  * Supported input image formats
@@ -41,6 +44,38 @@ const SUPPORTED_FORMATS = [
  */
 export async function POST(request: NextRequest) {
   try {
+    // ========================================
+    // Step 1: Session Management
+    // ========================================
+    const session = await getSession();
+
+    // ========================================
+    // Step 2: Rate Limiting (Conversion-Specific)
+    // ========================================
+    const rateLimitResult = await checkRateLimit(
+      session.sessionId,
+      "convert",
+      conversionRateLimiter,
+    );
+
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        {
+          error: "Rate limit exceeded",
+          message: `Too many conversions. Please try again in ${rateLimitResult.retryAfter} seconds.`,
+          limit: rateLimitResult.limit,
+          remaining: 0,
+        },
+        {
+          status: 429,
+          headers: rateLimitResult.headers,
+        },
+      );
+    }
+
+    // ========================================
+    // Step 3: Parse Form Data
+    // ========================================
     const formData = await request.formData();
 
     // Get uploaded files
@@ -48,6 +83,14 @@ export async function POST(request: NextRequest) {
 
     if (files.length === 0) {
       return NextResponse.json({ error: "No files uploaded" }, { status: 400 });
+    }
+
+    // Validate file count (max 50 files per request)
+    if (files.length > 50) {
+      return NextResponse.json(
+        { error: "Too many files. Maximum 50 files per request." },
+        { status: 400 },
+      );
     }
 
     // Extract bulk conversion options (used if no per-file settings)
@@ -83,17 +126,46 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Validate files
+    // ========================================
+    // Step 4: Ensure Session Directory Exists
+    // ========================================
+    const sessionDir = await fileCache.ensureSessionDir(session.sessionId);
+
+    // ========================================
+    // Step 5: Validate All Files Before Processing
+    // ========================================
     for (const file of files) {
-      const ext = extname(file.name).toLowerCase();
-      if (!SUPPORTED_FORMATS.includes(ext)) {
-        return NextResponse.json({ error: `Unsupported file format: ${ext}` }, { status: 400 });
+      // File size check
+      if (file.size > MAX_FILE_SIZE) {
+        return NextResponse.json(
+          {
+            error: `File "${file.name}" is too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB.`,
+          },
+          { status: 413 },
+        );
+      }
+
+      // Magic number validation
+      const validation = await validateImageFile(file);
+      if (!validation.valid) {
+        return NextResponse.json(
+          {
+            error: `File "${file.name}" validation failed: ${validation.error}`,
+          },
+          { status: 400 },
+        );
+      }
+
+      // Log warnings if any
+      if (validation.warnings && validation.warnings.length > 0) {
+        console.warn(`File "${file.name}" warnings:`, validation.warnings);
       }
     }
 
-    // Process each file
+    // ========================================
+    // Step 6: Process Each File
+    // ========================================
     const results = [];
-    const cacheDir = fileCache.getCacheDir();
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -109,11 +181,11 @@ export async function POST(request: NextRequest) {
           fit: bulkFit,
         };
 
-        // Generate unique filename
+        // Generate unique filename for session directory
         const uniqueFilename = generateUniqueFilename(file.name);
-        const inputPath = join(cacheDir, uniqueFilename);
+        const inputPath = join(sessionDir, uniqueFilename);
 
-        // Save uploaded file
+        // Save uploaded file to session directory
         const bytes = await file.arrayBuffer();
         const buffer = Buffer.from(bytes);
         await writeFile(inputPath, buffer);
@@ -122,7 +194,7 @@ export async function POST(request: NextRequest) {
         const fileBaseName = basename(file.name, extname(file.name));
         const slugifiedName = slugifyFilename(fileBaseName);
         const outputFilename = `${slugifiedName}.${fileSettings.format}`;
-        const outputPath = join(cacheDir, generateUniqueFilename(outputFilename));
+        const outputPath = join(sessionDir, generateUniqueFilename(outputFilename));
 
         // Convert image with file-specific settings
         const result = await convertImage(buffer, outputPath, {
@@ -135,11 +207,13 @@ export async function POST(request: NextRequest) {
         });
 
         if (result.success) {
+          const outputBasename = basename(outputPath);
           results.push({
             success: true,
             originalFilename: file.name,
-            outputFilename: basename(outputPath),
-            downloadUrl: `/api/download/${basename(outputPath)}`,
+            outputFilename: outputBasename,
+            // Download URL includes session ID for validation
+            downloadUrl: `/api/download/${session.sessionId}/${outputBasename}`,
             originalSize: result.originalSize,
             convertedSize: result.convertedSize,
             reductionPercent: result.reductionPercent,
@@ -172,11 +246,20 @@ export async function POST(request: NextRequest) {
       totalConvertedSize: results.reduce((sum, r) => sum + (r.convertedSize || 0), 0),
     };
 
-    return NextResponse.json({
-      success: true,
-      results,
-      stats,
-    });
+    // ========================================
+    // Step 7: Return Results with Rate Limit Headers
+    // ========================================
+    return NextResponse.json(
+      {
+        success: true,
+        results,
+        stats,
+        sessionId: session.sessionId, // Include session ID for debugging
+      },
+      {
+        headers: rateLimitResult.headers,
+      },
+    );
   } catch (error) {
     console.error("[API] Convert error:", error);
     return NextResponse.json(
@@ -184,7 +267,7 @@ export async function POST(request: NextRequest) {
         error: "Internal server error",
         message: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

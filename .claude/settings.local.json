@@ -7,7 +7,11 @@
       "Bash(npx create-next-app@latest:*)",
       "Bash(bun add:*)",
       "Bash(bunx tailwindcss init:*)",
-      "Bash(bunx @biomejs/biome:*)"
+      "Bash(bunx @biomejs/biome:*)",
+      "WebSearch",
+      "mcp__context7__resolve-library-id",
+      "Bash(pkill:*)",
+      "Bash(bun dev:*)"
     ],
     "deny": [],
     "ask": []

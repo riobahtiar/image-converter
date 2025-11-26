@@ -1,36 +1,74 @@
+/**
+ * Cache Clear API with Session Isolation
+ *
+ * POST /api/cache/clear
+ *
+ * Security:
+ * - Only clears the current user's session files
+ * - Does NOT affect other users' files
+ * - Session-isolated cache management
+ *
+ * @module app/api/cache/clear/route
+ */
+
 import { fileCache } from "@/lib/cache";
-import { rm } from "node:fs/promises";
+import { getSession } from "@/lib/session";
 import { NextResponse } from "next/server";
 
 /**
  * POST /api/cache/clear
- * Clears all cached files and resets the cache directory
+ * Clears cached files for the current user's session only
+ *
+ * Security features:
+ * - Session-based isolation (only clears current user's files)
+ * - Does not affect other users
+ * - Safe for multi-user environments
+ *
+ * @returns Success/error response
  */
 export async function POST() {
 	try {
-		const cacheDir = fileCache.getCacheDir();
+		// ========================================
+		// Step 1: Get Current User Session
+		// ========================================
+		const session = await getSession();
 
-		// Remove all files in the cache directory
+		// ========================================
+		// Step 2: Clear Only User's Session Directory
+		// ========================================
 		try {
-			await rm(cacheDir, { recursive: true, force: true });
-			console.log("[Cache API] Cache directory cleared successfully");
+			await fileCache.clearSession(session.sessionId);
+			console.log(
+				`[Cache API] Cleared session ${session.sessionId} successfully`,
+			);
+
+			return NextResponse.json({
+				success: true,
+				message: "Your files have been cleared successfully",
+				sessionId: session.sessionId,
+			});
 		} catch (error) {
-			console.error("[Cache API] Failed to clear cache directory:", error);
+			console.error(
+				`[Cache API] Failed to clear session ${session.sessionId}:`,
+				error,
+			);
+			return NextResponse.json(
+				{
+					success: false,
+					error: "Failed to clear your files",
+					message:
+						error instanceof Error ? error.message : "Unknown error occurred",
+				},
+				{ status: 500 },
+			);
 		}
-
-		// Reinitialize the cache directory (it will be recreated by the FileCache class)
-		// The FileCache.init() method already handles directory creation
-
-		return NextResponse.json({
-			success: true,
-			message: "Cache cleared successfully",
-		});
 	} catch (error) {
-		console.error("[Cache API] Error clearing cache:", error);
+		console.error("[Cache API] Error in clear endpoint:", error);
 		return NextResponse.json(
 			{
 				success: false,
-				error: "Failed to clear cache",
+				error: "Internal server error",
+				message: error instanceof Error ? error.message : "Unknown error",
 			},
 			{ status: 500 },
 		);

@@ -1,12 +1,19 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
+import { join } from "node:path";
 import { type NextRequest, NextResponse } from "next/server";
 import { fileCache } from "@/lib/cache";
+import { getSession } from "@/lib/session";
 import archiver from "archiver";
 
 /**
  * POST /api/download-all
  * Create a ZIP file of multiple converted images
+ *
+ * Security features:
+ * - Session validation (users can only download their own files)
+ * - Path traversal prevention
+ * - File existence validation
  *
  * Accepts JSON body with:
  * - filenames: Array of filenames to include in the ZIP
@@ -15,6 +22,14 @@ import archiver from "archiver";
  */
 export async function POST(request: NextRequest) {
     try {
+        // ========================================
+        // Step 1: Get Current User Session
+        // ========================================
+        const session = await getSession();
+
+        // ========================================
+        // Step 2: Parse and Validate Request Body
+        // ========================================
         const body = await request.json();
         const { filenames } = body as { filenames: string[] };
 
@@ -22,16 +37,46 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "No filenames provided" }, { status: 400 });
         }
 
-        // Validate files exist in cache
+        // Limit number of files in a single ZIP (prevent memory issues)
+        if (filenames.length > 100) {
+            return NextResponse.json(
+                { error: "Too many files. Maximum 100 files per ZIP." },
+                { status: 400 }
+            );
+        }
+
+        // ========================================
+        // Step 3: Validate Files (Security + Existence)
+        // ========================================
         const validFiles: string[] = [];
+        const sessionDir = fileCache.getSessionDir(session.sessionId);
+
         for (const filename of filenames) {
-            if (await fileCache.fileExists(filename)) {
+            // Path traversal prevention
+            if (
+                filename.includes("..") ||
+                filename.includes("/") ||
+                filename.includes("\\") ||
+                filename.startsWith(".")
+            ) {
+                console.warn(`[Download-All] Path traversal attempt: ${filename}`);
+                continue; // Skip invalid filenames
+            }
+
+            // Check file exists in user's session directory
+            if (await fileCache.fileExists(filename, session.sessionId)) {
                 validFiles.push(filename);
             }
         }
 
         if (validFiles.length === 0) {
-            return NextResponse.json({ error: "No valid files found" }, { status: 404 });
+            return NextResponse.json(
+                {
+                    error: "No valid files found",
+                    message: "None of the requested files exist in your session or they have expired."
+                },
+                { status: 404 }
+            );
         }
 
         // Create a PassThrough stream for the ZIP output
@@ -46,9 +91,12 @@ export async function POST(request: NextRequest) {
         // Pipe archive data to the stream
         archive.pipe(stream);
 
-        // Add files to archive
+        // ========================================
+        // Step 4: Add Files to ZIP Archive
+        // ========================================
+        // Add files from user's session directory
         for (const filename of validFiles) {
-            const filePath = fileCache.getFilePath(filename);
+            const filePath = join(sessionDir, filename);
             archive.file(filePath, { name: filename });
         }
 

@@ -5,6 +5,10 @@ import type { NextConfig } from "next";
  * @type {NextConfig}
  */
 const nextConfig: NextConfig = {
+  // Set workspace root to avoid lockfile warnings
+  turbopack: {
+    root: __dirname,
+  },
   // Use Bun as the runtime
   experimental: {
     serverActions: {

@@ -15,10 +15,13 @@ export class FileCache {
 
   /**
    * Create a FileCache instance
-   * @param cacheDir - Directory for cache storage (default: ./public/uploads/temp)
-   * @param maxAgeMinutes - Maximum age of cached files in minutes (default: 15)
+   * @param cacheDir - Directory for cache storage (default: ./.cache/uploads - PRIVATE, not in public/)
+   * @param maxAgeMinutes - Maximum age of cached files in minutes (default: from CACHE_MAX_AGE_MINUTES env or 15)
    */
-  constructor(cacheDir = "./public/uploads/temp", maxAgeMinutes = 15) {
+  constructor(
+    cacheDir = "./.cache/uploads",
+    maxAgeMinutes = Number.parseInt(process.env.CACHE_MAX_AGE_MINUTES || "15", 10)
+  ) {
     this.cacheDir = cacheDir;
     this.maxAge = maxAgeMinutes * 60 * 1000; // Convert to milliseconds
     this.init();
