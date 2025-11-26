@@ -1,0 +1,21 @@
+{
+  "name": "image-converter",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "imgco": "bun index.ts",
+    "icon": "bun run imgco --format webp --quality 90 -w 600",
+    "reset-log": "bun run imgco --reset",
+    "clean": "bun run imgco --clean"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "sharp": "^0.34.5"
+  }
+}
