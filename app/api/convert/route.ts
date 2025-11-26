@@ -2,7 +2,7 @@ import { writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { type NextRequest, NextResponse } from "next/server";
 import { fileCache } from "@/lib/cache";
-import { convertImage, slugifyFilename } from "@/lib/converter";
+import { convertImage } from "@/lib/converter";
 import type { ImageFormat, ResizeFit } from "@/lib/converter/types";
 import { generateUniqueFilename } from "@/lib/utils";
 import { getSession } from "@/lib/session";
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     const rateLimitResult = await checkRateLimit(
       session.sessionId,
       "convert",
-      conversionRateLimiter,
+      conversionRateLimiter
     );
 
     if (!rateLimitResult.success) {
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
         {
           status: 429,
           headers: rateLimitResult.headers,
-        },
+        }
       );
     }
 
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
     if (files.length > 50) {
       return NextResponse.json(
         { error: "Too many files. Maximum 50 files per request." },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
           {
             error: `File "${file.name}" is too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB.`,
           },
-          { status: 413 },
+          { status: 413 }
         );
       }
 
@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
           {
             error: `File "${file.name}" validation failed: ${validation.error}`,
           },
-          { status: 400 },
+          { status: 400 }
         );
       }
 
@@ -190,11 +190,13 @@ export async function POST(request: NextRequest) {
         const buffer = Buffer.from(bytes);
         await writeFile(inputPath, buffer);
 
-        // Generate output filename with correct format
+        // Generate output filename: preserve original name, only change extension
         const fileBaseName = basename(file.name, extname(file.name));
-        const slugifiedName = slugifyFilename(fileBaseName);
-        const outputFilename = `${slugifiedName}.${fileSettings.format}`;
-        const outputPath = join(sessionDir, generateUniqueFilename(outputFilename));
+        const downloadFilename = `${fileBaseName}.${fileSettings.format}`;
+
+        // Generate unique filename for storage (security/isolation)
+        const uniqueStoredFilename = generateUniqueFilename(downloadFilename);
+        const outputPath = join(sessionDir, uniqueStoredFilename);
 
         // Convert image with file-specific settings
         const result = await convertImage(buffer, outputPath, {
@@ -208,10 +210,30 @@ export async function POST(request: NextRequest) {
 
         if (result.success) {
           const outputBasename = basename(outputPath);
+
+          // Store metadata mapping: unique stored filename -> download filename
+          const metadataPath = join(sessionDir, ".metadata.json");
+          let metadata: Record<string, string> = {};
+          try {
+            const existingMetadata = await require("node:fs/promises").readFile(
+              metadataPath,
+              "utf-8"
+            );
+            metadata = JSON.parse(existingMetadata);
+          } catch {
+            // Metadata file doesn't exist yet, that's fine
+          }
+          metadata[outputBasename] = downloadFilename;
+          await require("node:fs/promises").writeFile(
+            metadataPath,
+            JSON.stringify(metadata, null, 2)
+          );
+
           results.push({
             success: true,
             originalFilename: file.name,
-            outputFilename: outputBasename,
+            outputFilename: outputBasename, // Internal unique filename
+            downloadFilename: downloadFilename, // User-facing filename (original name + new extension)
             // Download URL includes session ID for validation
             downloadUrl: `/api/download/${session.sessionId}/${outputBasename}`,
             originalSize: result.originalSize,
@@ -258,7 +280,7 @@ export async function POST(request: NextRequest) {
       },
       {
         headers: rateLimitResult.headers,
-      },
+      }
     );
   } catch (error) {
     console.error("[API] Convert error:", error);
@@ -267,7 +289,7 @@ export async function POST(request: NextRequest) {
         error: "Internal server error",
         message: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

@@ -42,7 +42,7 @@ class CircuitBreaker {
   constructor(
     private failureThreshold: number = 5,
     private resetTimeout: number = 30000
-  ) { }
+  ) {}
 
   /**
    * Check if circuit breaker allows request
@@ -268,12 +268,8 @@ class Logger {
    */
   async getStats(): Promise<{ errorLogSize: number; infoLogSize: number }> {
     try {
-      const errorLogSize = existsSync(this.errorLogFile)
-        ? (await stat(this.errorLogFile)).size
-        : 0;
-      const infoLogSize = existsSync(this.infoLogFile)
-        ? (await stat(this.infoLogFile)).size
-        : 0;
+      const errorLogSize = existsSync(this.errorLogFile) ? (await stat(this.errorLogFile)).size : 0;
+      const infoLogSize = existsSync(this.infoLogFile) ? (await stat(this.infoLogFile)).size : 0;
 
       return { errorLogSize, infoLogSize };
     } catch (_error) {

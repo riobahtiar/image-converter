@@ -25,14 +25,14 @@ import { fileTypeFromBuffer } from "file-type";
  * @const {readonly string[]}
  */
 const ALLOWED_MIME_TYPES = [
-	"image/jpeg",
-	"image/png",
-	"image/webp",
-	"image/gif",
-	"image/avif",
-	"image/tiff",
-	"image/bmp",
-	"image/svg+xml", // SVG (text-based, handled separately)
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/avif",
+  "image/tiff",
+  "image/bmp",
+  "image/svg+xml", // SVG (text-based, handled separately)
 ] as const;
 
 /**
@@ -42,16 +42,16 @@ const ALLOWED_MIME_TYPES = [
  * @const {readonly string[]}
  */
 const ALLOWED_EXTENSIONS = [
-	"jpg",
-	"jpeg",
-	"png",
-	"webp",
-	"gif",
-	"avif",
-	"tiff",
-	"tif",
-	"bmp",
-	"svg",
+  "jpg",
+  "jpeg",
+  "png",
+  "webp",
+  "gif",
+  "avif",
+  "tiff",
+  "tif",
+  "bmp",
+  "svg",
 ] as const;
 
 /**
@@ -76,18 +76,18 @@ export const MIN_FILE_SIZE = 100; // 100 bytes
  * @interface FileValidationResult
  */
 export interface FileValidationResult {
-	/** Whether the file passed validation */
-	valid: boolean;
-	/** Detected MIME type from magic number */
-	mimeType?: string;
-	/** Detected file extension */
-	extension?: string;
-	/** File size in bytes */
-	fileSize?: number;
-	/** Error message if validation failed */
-	error?: string;
-	/** Warning messages (validation passed but with caveats) */
-	warnings?: string[];
+  /** Whether the file passed validation */
+  valid: boolean;
+  /** Detected MIME type from magic number */
+  mimeType?: string;
+  /** Detected file extension */
+  extension?: string;
+  /** File size in bytes */
+  fileSize?: number;
+  /** Error message if validation failed */
+  error?: string;
+  /** Warning messages (validation passed but with caveats) */
+  warnings?: string[];
 }
 
 /**
@@ -123,163 +123,162 @@ export interface FileValidationResult {
  *
  * console.log('File is valid:', result.mimeType);
  */
-export async function validateImageFile(
-	file: File,
-): Promise<FileValidationResult> {
-	const warnings: string[] = [];
+export async function validateImageFile(file: File): Promise<FileValidationResult> {
+  const warnings: string[] = [];
 
-	try {
-		// ========================================
-		// Step 1: File Size Validation
-		// ========================================
-		if (file.size > MAX_FILE_SIZE) {
-			return {
-				valid: false,
-				fileSize: file.size,
-				error: `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB (${(file.size / 1024 / 1024).toFixed(2)}MB provided)`,
-			};
-		}
+  try {
+    // ========================================
+    // Step 1: File Size Validation
+    // ========================================
+    if (file.size > MAX_FILE_SIZE) {
+      return {
+        valid: false,
+        fileSize: file.size,
+        error: `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB (${(file.size / 1024 / 1024).toFixed(2)}MB provided)`,
+      };
+    }
 
-		if (file.size < MIN_FILE_SIZE) {
-			return {
-				valid: false,
-				fileSize: file.size,
-				error: `File too small. Minimum size is ${MIN_FILE_SIZE} bytes (${file.size} bytes provided). File may be corrupted.`,
-			};
-		}
+    if (file.size < MIN_FILE_SIZE) {
+      return {
+        valid: false,
+        fileSize: file.size,
+        error: `File too small. Minimum size is ${MIN_FILE_SIZE} bytes (${file.size} bytes provided). File may be corrupted.`,
+      };
+    }
 
-		// ========================================
-		// Step 2: Extension Validation (Quick Check)
-		// ========================================
-		const extension = file.name.split(".").pop()?.toLowerCase();
+    // ========================================
+    // Step 2: Extension Validation (Quick Check)
+    // ========================================
+    const extension = file.name.split(".").pop()?.toLowerCase();
 
-		if (!extension) {
-			return {
-				valid: false,
-				fileSize: file.size,
-				error: "File has no extension",
-			};
-		}
+    if (!extension) {
+      return {
+        valid: false,
+        fileSize: file.size,
+        error: "File has no extension",
+      };
+    }
 
-		if (!ALLOWED_EXTENSIONS.includes(extension as any)) {
-			return {
-				valid: false,
-				fileSize: file.size,
-				extension,
-				error: `Invalid file extension: .${extension}. Allowed: ${ALLOWED_EXTENSIONS.join(", ")}`,
-			};
-		}
+    if (!ALLOWED_EXTENSIONS.includes(extension as any)) {
+      return {
+        valid: false,
+        fileSize: file.size,
+        extension,
+        error: `Invalid file extension: .${extension}. Allowed: ${ALLOWED_EXTENSIONS.join(", ")}`,
+      };
+    }
 
-		// ========================================
-		// Step 3: SVG Special Handling
-		// ========================================
-		// SVG is text-based (XML), can't be validated via binary magic numbers
-		if (extension === "svg") {
-			// Read first few bytes to check for XML/SVG markers
-			const arrayBuffer = await file.slice(0, 1000).arrayBuffer();
-			const text = new TextDecoder().decode(arrayBuffer);
+    // ========================================
+    // Step 3: SVG Special Handling
+    // ========================================
+    // SVG is text-based (XML), can't be validated via binary magic numbers
+    if (extension === "svg") {
+      // Read first few bytes to check for XML/SVG markers
+      const arrayBuffer = await file.slice(0, 1000).arrayBuffer();
+      const text = new TextDecoder().decode(arrayBuffer);
 
-			if (!text.includes("<svg") && !text.includes("<?xml")) {
-				return {
-					valid: false,
-					fileSize: file.size,
-					extension,
-					error: "File has .svg extension but doesn't contain valid SVG content",
-				};
-			}
+      if (!text.includes("<svg") && !text.includes("<?xml")) {
+        return {
+          valid: false,
+          fileSize: file.size,
+          extension,
+          error: "File has .svg extension but doesn't contain valid SVG content",
+        };
+      }
 
-			// SVG files can contain malicious scripts
-			warnings.push(
-				"SVG files may contain embedded scripts. Ensure proper sanitization if displaying.",
-			);
+      // SVG files can contain malicious scripts
+      warnings.push(
+        "SVG files may contain embedded scripts. Ensure proper sanitization if displaying."
+      );
 
-			return {
-				valid: true,
-				mimeType: "image/svg+xml",
-				extension: "svg",
-				fileSize: file.size,
-				warnings,
-			};
-		}
+      return {
+        valid: true,
+        mimeType: "image/svg+xml",
+        extension: "svg",
+        fileSize: file.size,
+        warnings,
+      };
+    }
 
-		// ========================================
-		// Step 4: Magic Number Validation
-		// ========================================
-		// Read first 4100 bytes for file type detection
-		// Most magic numbers are in first few bytes
-		const sampleSize = Math.min(4100, file.size);
-		const arrayBuffer = await file.slice(0, sampleSize).arrayBuffer();
-		const buffer = Buffer.from(arrayBuffer);
+    // ========================================
+    // Step 4: Magic Number Validation
+    // ========================================
+    // Read first 4100 bytes for file type detection
+    // Most magic numbers are in first few bytes
+    const sampleSize = Math.min(4100, file.size);
+    const arrayBuffer = await file.slice(0, sampleSize).arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
-		// Detect actual file type from binary signature
-		const detectedType = await fileTypeFromBuffer(buffer);
+    // Detect actual file type from binary signature
+    const detectedType = await fileTypeFromBuffer(buffer);
 
-		if (!detectedType) {
-			return {
-				valid: false,
-				fileSize: file.size,
-				extension,
-				error: "Could not determine file type from content. File may be corrupted or is not a valid image.",
-			};
-		}
+    if (!detectedType) {
+      return {
+        valid: false,
+        fileSize: file.size,
+        extension,
+        error:
+          "Could not determine file type from content. File may be corrupted or is not a valid image.",
+      };
+    }
 
-		// ========================================
-		// Step 5: MIME Type Whitelist Check
-		// ========================================
-		if (!ALLOWED_MIME_TYPES.includes(detectedType.mime as any)) {
-			return {
-				valid: false,
-				fileSize: file.size,
-				extension,
-				mimeType: detectedType.mime,
-				error: `Invalid file type: ${detectedType.mime}. This is not a supported image format.`,
-			};
-		}
+    // ========================================
+    // Step 5: MIME Type Whitelist Check
+    // ========================================
+    if (!ALLOWED_MIME_TYPES.includes(detectedType.mime as any)) {
+      return {
+        valid: false,
+        fileSize: file.size,
+        extension,
+        mimeType: detectedType.mime,
+        error: `Invalid file type: ${detectedType.mime}. This is not a supported image format.`,
+      };
+    }
 
-		// ========================================
-		// Step 6: Extension/MIME Consistency Check
-		// ========================================
-		// Verify extension matches detected type (prevents spoofing)
-		const extensionMimeMap: Record<string, string[]> = {
-			jpg: ["image/jpeg"],
-			jpeg: ["image/jpeg"],
-			png: ["image/png"],
-			webp: ["image/webp"],
-			gif: ["image/gif"],
-			avif: ["image/avif"],
-			tiff: ["image/tiff"],
-			tif: ["image/tiff"],
-			bmp: ["image/bmp", "image/x-ms-bmp"],
-		};
+    // ========================================
+    // Step 6: Extension/MIME Consistency Check
+    // ========================================
+    // Verify extension matches detected type (prevents spoofing)
+    const extensionMimeMap: Record<string, string[]> = {
+      jpg: ["image/jpeg"],
+      jpeg: ["image/jpeg"],
+      png: ["image/png"],
+      webp: ["image/webp"],
+      gif: ["image/gif"],
+      avif: ["image/avif"],
+      tiff: ["image/tiff"],
+      tif: ["image/tiff"],
+      bmp: ["image/bmp", "image/x-ms-bmp"],
+    };
 
-		const expectedMimes = extensionMimeMap[extension];
-		if (expectedMimes && !expectedMimes.includes(detectedType.mime)) {
-			warnings.push(
-				`Extension mismatch: file has .${extension} extension but content is ${detectedType.mime}. This may indicate file spoofing.`,
-			);
-		}
+    const expectedMimes = extensionMimeMap[extension];
+    if (expectedMimes && !expectedMimes.includes(detectedType.mime)) {
+      warnings.push(
+        `Extension mismatch: file has .${extension} extension but content is ${detectedType.mime}. This may indicate file spoofing.`
+      );
+    }
 
-		// ========================================
-		// Success!
-		// ========================================
-		return {
-			valid: true,
-			mimeType: detectedType.mime,
-			extension: detectedType.ext,
-			fileSize: file.size,
-			warnings: warnings.length > 0 ? warnings : undefined,
-		};
-	} catch (error) {
-		console.error("File validation error:", error);
-		return {
-			valid: false,
-			fileSize: file.size,
-			error:
-				error instanceof Error
-					? `Validation failed: ${error.message}`
-					: "File validation failed due to an unknown error",
-		};
-	}
+    // ========================================
+    // Success!
+    // ========================================
+    return {
+      valid: true,
+      mimeType: detectedType.mime,
+      extension: detectedType.ext,
+      fileSize: file.size,
+      warnings: warnings.length > 0 ? warnings : undefined,
+    };
+  } catch (error) {
+    console.error("File validation error:", error);
+    return {
+      valid: false,
+      fileSize: file.size,
+      error:
+        error instanceof Error
+          ? `Validation failed: ${error.message}`
+          : "File validation failed due to an unknown error",
+    };
+  }
 }
 
 /**
@@ -301,97 +300,96 @@ export async function validateImageFile(
  * );
  */
 export async function validateImageBuffer(
-	buffer: Buffer,
-	filename: string,
-	fileSize: number,
+  buffer: Buffer,
+  filename: string,
+  fileSize: number
 ): Promise<FileValidationResult> {
-	const warnings: string[] = [];
+  const warnings: string[] = [];
 
-	try {
-		// Size validation
-		if (fileSize > MAX_FILE_SIZE) {
-			return {
-				valid: false,
-				fileSize,
-				error: `Buffer too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB`,
-			};
-		}
+  try {
+    // Size validation
+    if (fileSize > MAX_FILE_SIZE) {
+      return {
+        valid: false,
+        fileSize,
+        error: `Buffer too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB`,
+      };
+    }
 
-		if (fileSize < MIN_FILE_SIZE) {
-			return {
-				valid: false,
-				fileSize,
-				error: `Buffer too small. Minimum size is ${MIN_FILE_SIZE} bytes`,
-			};
-		}
+    if (fileSize < MIN_FILE_SIZE) {
+      return {
+        valid: false,
+        fileSize,
+        error: `Buffer too small. Minimum size is ${MIN_FILE_SIZE} bytes`,
+      };
+    }
 
-		// Extension validation
-		const extension = filename.split(".").pop()?.toLowerCase();
-		if (!extension || !ALLOWED_EXTENSIONS.includes(extension as any)) {
-			return {
-				valid: false,
-				fileSize,
-				error: `Invalid file extension: ${extension}`,
-			};
-		}
+    // Extension validation
+    const extension = filename.split(".").pop()?.toLowerCase();
+    if (!extension || !ALLOWED_EXTENSIONS.includes(extension as any)) {
+      return {
+        valid: false,
+        fileSize,
+        error: `Invalid file extension: ${extension}`,
+      };
+    }
 
-		// SVG handling
-		if (extension === "svg") {
-			const text = buffer.toString("utf-8", 0, Math.min(1000, buffer.length));
-			if (!text.includes("<svg") && !text.includes("<?xml")) {
-				return {
-					valid: false,
-					fileSize,
-					error: "Invalid SVG content",
-				};
-			}
+    // SVG handling
+    if (extension === "svg") {
+      const text = buffer.toString("utf-8", 0, Math.min(1000, buffer.length));
+      if (!text.includes("<svg") && !text.includes("<?xml")) {
+        return {
+          valid: false,
+          fileSize,
+          error: "Invalid SVG content",
+        };
+      }
 
-			warnings.push("SVG files may contain embedded scripts");
+      warnings.push("SVG files may contain embedded scripts");
 
-			return {
-				valid: true,
-				mimeType: "image/svg+xml",
-				extension: "svg",
-				fileSize,
-				warnings,
-			};
-		}
+      return {
+        valid: true,
+        mimeType: "image/svg+xml",
+        extension: "svg",
+        fileSize,
+        warnings,
+      };
+    }
 
-		// Magic number detection
-		const detectedType = await fileTypeFromBuffer(buffer);
+    // Magic number detection
+    const detectedType = await fileTypeFromBuffer(buffer);
 
-		if (!detectedType) {
-			return {
-				valid: false,
-				fileSize,
-				error: "Could not determine file type from buffer",
-			};
-		}
+    if (!detectedType) {
+      return {
+        valid: false,
+        fileSize,
+        error: "Could not determine file type from buffer",
+      };
+    }
 
-		if (!ALLOWED_MIME_TYPES.includes(detectedType.mime as any)) {
-			return {
-				valid: false,
-				fileSize,
-				mimeType: detectedType.mime,
-				error: `Invalid MIME type: ${detectedType.mime}`,
-			};
-		}
+    if (!ALLOWED_MIME_TYPES.includes(detectedType.mime as any)) {
+      return {
+        valid: false,
+        fileSize,
+        mimeType: detectedType.mime,
+        error: `Invalid MIME type: ${detectedType.mime}`,
+      };
+    }
 
-		return {
-			valid: true,
-			mimeType: detectedType.mime,
-			extension: detectedType.ext,
-			fileSize,
-			warnings: warnings.length > 0 ? warnings : undefined,
-		};
-	} catch (error) {
-		return {
-			valid: false,
-			fileSize,
-			error:
-				error instanceof Error ? error.message : "Buffer validation failed",
-		};
-	}
+    return {
+      valid: true,
+      mimeType: detectedType.mime,
+      extension: detectedType.ext,
+      fileSize,
+      warnings: warnings.length > 0 ? warnings : undefined,
+    };
+  } catch (error) {
+    return {
+      valid: false,
+      fileSize,
+      error: error instanceof Error ? error.message : "Buffer validation failed",
+    };
+  }
 }
 
 /**
@@ -410,10 +408,8 @@ export async function validateImageBuffer(
  * }
  */
 export function isAllowedExtension(filename: string): boolean {
-	const extension = filename.split(".").pop()?.toLowerCase();
-	return extension
-		? ALLOWED_EXTENSIONS.includes(extension as any)
-		: false;
+  const extension = filename.split(".").pop()?.toLowerCase();
+  return extension ? ALLOWED_EXTENSIONS.includes(extension as any) : false;
 }
 
 /**
@@ -426,12 +422,11 @@ export function isAllowedExtension(filename: string): boolean {
  * formatFileSize(1572864); // "1.50 MB"
  */
 export function formatFileSize(bytes: number): string {
-	if (bytes === 0) return "0 Bytes";
-	if (bytes < 1024) return `${bytes} Bytes`;
-	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
-	if (bytes < 1024 * 1024 * 1024)
-		return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
-	return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  if (bytes === 0) return "0 Bytes";
+  if (bytes < 1024) return `${bytes} Bytes`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
 /**
@@ -446,11 +441,9 @@ export function formatFileSize(bytes: number): string {
  *   alert(getValidationErrorMessage(result));
  * }
  */
-export function getValidationErrorMessage(
-	result: FileValidationResult,
-): string {
-	if (result.valid) return "";
-	return result.error || "File validation failed";
+export function getValidationErrorMessage(result: FileValidationResult): string {
+  if (result.valid) return "";
+  return result.error || "File validation failed";
 }
 
 /**
@@ -468,8 +461,6 @@ export function getValidationErrorMessage(
  *   console.error('Invalid files:', invalid);
  * }
  */
-export async function validateImageFiles(
-	files: File[],
-): Promise<FileValidationResult[]> {
-	return Promise.all(files.map((file) => validateImageFile(file)));
+export async function validateImageFiles(files: File[]): Promise<FileValidationResult[]> {
+  return Promise.all(files.map((file) => validateImageFile(file)));
 }

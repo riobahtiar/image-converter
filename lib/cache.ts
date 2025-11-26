@@ -83,7 +83,7 @@ export class FileCache {
                   await require("node:fs/promises").rm(filePath, { recursive: true, force: true });
                   deletedCount++;
                 }
-              } catch { }
+              } catch {}
             }
           } else {
             // Legacy flat file (or unexpected file in root)
