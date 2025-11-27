@@ -8,6 +8,8 @@ import { MAX_FILE_SIZE, validateImageFile } from "@/lib/fileValidation";
 import { checkRateLimit, conversionRateLimiter } from "@/lib/ratelimit";
 import { getSession } from "@/lib/session";
 import { generateUniqueFilename } from "@/lib/utils";
+import { performSecurityCheck, recordSuccess, checkHoneypot } from "@/lib/security/middleware";
+import { blockIdentifier } from "@/lib/security/blocker";
 
 /**
  * Supported input image formats
@@ -59,7 +61,76 @@ export async function POST(request: NextRequest) {
     });
 
     // ========================================
-    // Step 2: Rate Limiting (Conversion-Specific)
+    // Step 2: Parse Form Data (Early for Security Checks)
+    // ========================================
+    const formData = await request.formData();
+    console.log("[SERVER] Form data parsed");
+
+    // Check honeypot fields (bot detection)
+    if (checkHoneypot(formData)) {
+      console.warn("[SECURITY] Honeypot triggered - bot detected", {
+        sessionId: session.sessionId,
+      });
+      await blockIdentifier(session.sessionId, "honeypot:form-field", 24 * 60 * 60);
+      return NextResponse.json({ error: "Invalid form submission" }, { status: 400 });
+    }
+
+    // Get uploaded files
+    const files = formData.getAll("files") as File[];
+
+    if (files.length === 0) {
+      console.warn("[SERVER] No files uploaded");
+      return NextResponse.json({ error: "No files uploaded" }, { status: 400 });
+    }
+
+    // Calculate total file size for security checks
+    const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
+    const totalMB = totalBytes / (1024 * 1024);
+
+    console.log("[SERVER] Files received", {
+      fileCount: files.length,
+      fileNames: files.map((f) => f.name),
+      totalSize: totalBytes,
+      totalMB: totalMB.toFixed(2),
+    });
+
+    // ========================================
+    // Step 3: Comprehensive Security Check
+    // ========================================
+    const securityCheck = await performSecurityCheck(session.sessionId, request, {
+      fileCount: files.length,
+      fileSizeMB: totalMB,
+    });
+
+    if (!securityCheck.allowed) {
+      console.warn("[SECURITY] Request blocked", {
+        sessionId: session.sessionId,
+        status: securityCheck.status,
+        reason: securityCheck.reason,
+        riskScore: securityCheck.riskScore,
+      });
+
+      return NextResponse.json(
+        {
+          error: securityCheck.reason || "Request denied",
+          retryAfter: securityCheck.retryAfter,
+        },
+        {
+          status: securityCheck.statusCode,
+          headers: securityCheck.headers,
+        }
+      );
+    }
+
+    // Log security info
+    console.log("[SECURITY] Request allowed", {
+      sessionId: session.sessionId,
+      riskScore: securityCheck.riskScore,
+      challengeRequired: securityCheck.challengeRequired,
+    });
+
+    // ========================================
+    // Step 4: Rate Limiting (Legacy - Supplemented by Quota System)
     // ========================================
     const rateLimitResult = await checkRateLimit(
       session.sessionId,
@@ -81,26 +152,6 @@ export async function POST(request: NextRequest) {
         }
       );
     }
-
-    // ========================================
-    // Step 3: Parse Form Data
-    // ========================================
-    const formData = await request.formData();
-    console.log("[SERVER] Form data parsed");
-
-    // Get uploaded files
-    const files = formData.getAll("files") as File[];
-
-    if (files.length === 0) {
-      console.warn("[SERVER] No files uploaded");
-      return NextResponse.json({ error: "No files uploaded" }, { status: 400 });
-    }
-
-    console.log("[SERVER] Files received", {
-      fileCount: files.length,
-      fileNames: files.map((f) => f.name),
-      totalSize: files.reduce((sum, f) => sum + f.size, 0),
-    });
 
     // Validate file count (max 50 files per request)
     if (files.length > 50) {
@@ -145,12 +196,12 @@ export async function POST(request: NextRequest) {
     }
 
     // ========================================
-    // Step 4: Ensure Session Directory Exists
+    // Step 5: Ensure Session Directory Exists
     // ========================================
     const sessionDir = await fileCache.ensureSessionDir(session.sessionId);
 
     // ========================================
-    // Step 5: Validate All Files Before Processing
+    // Step 6: Validate All Files Before Processing
     // ========================================
     // Store validation results for later use
     const validationResults: Map<string, any> = new Map();
@@ -213,7 +264,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ========================================
-    // Step 6: Process Each File
+    // Step 7: Process Each File
     // ========================================
     const results = [];
     console.log("[SERVER] Starting file processing", {
@@ -395,17 +446,35 @@ export async function POST(request: NextRequest) {
     };
 
     // ========================================
-    // Step 7: Return Results with Rate Limit Headers
+    // Step 8: Record Usage & Return Results
     // ========================================
+
+    // Record successful conversion for quota tracking
+    await recordSuccess(session.sessionId, {
+      fileCount: stats.success,
+      fileSizeMB: totalMB,
+      cpuTimeMs: totalDuration,
+    });
+
+    console.log("[SERVER] Conversion completed successfully", {
+      sessionId: session.sessionId,
+      stats,
+      duration: `${totalDuration}ms`,
+      riskScore: securityCheck.riskScore,
+    });
+
     return NextResponse.json(
       {
         success: true,
         results,
         stats,
-        sessionId: session.sessionId, // Include session ID for debugging
+        sessionId: session.sessionId,
       },
       {
-        headers: rateLimitResult.headers,
+        headers: {
+          ...rateLimitResult.headers,
+          ...securityCheck.headers,
+        },
       }
     );
   } catch (error) {

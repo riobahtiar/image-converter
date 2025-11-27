@@ -141,89 +141,30 @@ interface SvgSecurityWarningProps {
 }
 
 export function SvgSecurityWarning({ securityInfo, fileName, className }: SvgSecurityWarningProps) {
-  const { safe, threatsFound, blockingThreats, threats } = securityInfo;
+  const { safe, threatsFound, blockingThreats } = securityInfo;
 
   if (safe && threatsFound === 0) {
     return null;
   }
 
-  const highSeverityThreats = threats.filter((t) => t.severity >= 7);
-  const blockingThreatsData = threats.filter((t) => t.blocking);
-
   return (
-    <div
+    <p
       className={cn(
-        "rounded-lg border p-3 space-y-2",
-        !safe
-          ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/50"
-          : "border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-950/50",
+        "text-xs flex items-center gap-1",
+        !safe ? "text-red-600 dark:text-red-400" : "text-yellow-600 dark:text-yellow-400",
         className
       )}
     >
-      <div className="flex items-start gap-2">
-        {!safe ? (
-          <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
-        ) : (
-          <Shield className="h-4 w-4 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
-        )}
-        <div className="flex-1 space-y-1">
-          <p
-            className={cn(
-              "text-sm font-medium",
-              !safe ? "text-red-800 dark:text-red-200" : "text-yellow-800 dark:text-yellow-200"
-            )}
-          >
-            {!safe
-              ? `Security threats detected in ${fileName}`
-              : `Security warnings for ${fileName}`}
-          </p>
-
-          <div className="text-xs space-y-1">
-            {!safe && blockingThreatsData.length > 0 && (
-              <div className="text-red-700 dark:text-red-300">
-                <span className="font-medium">
-                  {blockingThreatsData.length} blocking threat
-                  {blockingThreatsData.length !== 1 ? "s" : ""}
-                </span>
-                {blockingThreatsData.length <= 3 && (
-                  <span className="ml-1">
-                    ({blockingThreatsData.map((t) => t.type).join(", ")})
-                  </span>
-                )}
-              </div>
-            )}
-
-            {safe && threatsFound > 0 && (
-              <div className="text-yellow-700 dark:text-yellow-300">
-                <span className="font-medium">
-                  {threatsFound} warning{threatsFound !== 1 ? "s" : ""}
-                </span>
-                {threatsFound <= 3 && (
-                  <span className="ml-1">({threats.map((t) => t.type).join(", ")})</span>
-                )}
-              </div>
-            )}
-          </div>
-
-          {highSeverityThreats.length > 0 && (
-            <div className="mt-2 space-y-1">
-              <div className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                High severity issues:
-              </div>
-              {highSeverityThreats.slice(0, 2).map((threat, index) => (
-                <div key={index} className="text-xs text-gray-700 dark:text-gray-300 ml-2">
-                  • {threat.description} (Severity: {threat.severity}/10)
-                </div>
-              ))}
-              {highSeverityThreats.length > 2 && (
-                <div className="text-xs text-gray-500 dark:text-gray-400 ml-2 italic">
-                  ... and {highSeverityThreats.length - 2} more
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+      {!safe ? (
+        <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+      ) : (
+        <Shield className="h-3 w-3 flex-shrink-0" />
+      )}
+      <span>
+        {!safe
+          ? `${blockingThreats} security issue${blockingThreats !== 1 ? "s" : ""} found`
+          : `${threatsFound} warning${threatsFound !== 1 ? "s" : ""}`}
+      </span>
+    </p>
   );
 }
