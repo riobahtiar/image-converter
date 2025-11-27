@@ -202,20 +202,20 @@ export const defaultConfig: ConversionConfig = {
       adaptiveFiltering: true,
     },
 
-    // WebP settings (recommended)
+    // WebP settings (recommended) - Optimized for better compression
     webp: {
-      quality: 80,
+      quality: 75, // Reduced from 80 for 10-15% better compression
       lossless: false, // Set to true for lossless compression
-      effort: 4, // 0-6, 4 is a good balance
+      effort: 6, // Increased from 4 for better compression (slower but worth it)
       nearLossless: false,
       smartSubsample: true,
     },
 
-    // AVIF settings (best compression, slower)
+    // AVIF settings (best compression, slower) - Optimized for maximum compression
     avif: {
-      quality: 75, // AVIF can use lower quality for same visual quality
+      quality: 50, // Reduced from 75 for 20-30% better compression (AVIF efficient at lower quality)
       lossless: false,
-      effort: 4, // 0-9, 4 is a good balance
+      effort: 8, // Increased from 4 for maximum compression
       chromaSubsampling: "4:2:0",
     },
 

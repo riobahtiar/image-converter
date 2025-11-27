@@ -1,8 +1,10 @@
-import { mkdir, readdir, stat, rm, rmdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { mkdir, readdir, rm, rmdir, stat } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import sharp from "sharp";
 import { defaultConfig, getCompressionSettings } from "./config";
+import { validateImageFile } from "./lib/fileValidation";
+import { generateSecurityReport, SvgSecurityLevel, scanSvgSecurity } from "./lib/svgSecurity";
 
 /**
  * Transformation configuration interface for image processing
@@ -499,7 +501,9 @@ async function transformImage(
     // Formats that don't: JPEG, HEIF
     const formatsWithoutTransparency = ["jpeg", "heif"];
     if (defaultConfig.background && formatsWithoutTransparency.includes(config.format || "webp")) {
-      transformer = transformer.flatten({ background: defaultConfig.background });
+      transformer = transformer.flatten({
+        background: defaultConfig.background,
+      });
     }
 
     // Handle metadata
@@ -520,10 +524,76 @@ async function transformImage(
     }
 
     // Resize if dimensions provided
+    // SVG Security Scanning
+    const isSvg = extname(inputPath).toLowerCase() === ".svg";
+    if (isSvg) {
+      try {
+        const svgContent = await Bun.file(inputPath).text();
+        const securityResult = await scanSvgSecurity(svgContent, SvgSecurityLevel.MODERATE, {
+          sanitize: false,
+          maxSize: 50 * 1024 * 1024, // 50MB
+        });
+
+        if (!securityResult.safe) {
+          const blockingThreats = securityResult.threats.filter((threat) => threat.blocking);
+          if (blockingThreats.length > 0) {
+            logger?.error("SVG security threats detected", {
+              file: basename(inputPath),
+              threats: blockingThreats.map((t) => ({
+                type: t.type,
+                severity: t.severity,
+                description: t.description,
+              })),
+            });
+            console.error(
+              `❌ ${basename(inputPath)}: SVG contains ${blockingThreats.length} security threat(s)`
+            );
+
+            // Log security report
+            const report = generateSecurityReport(securityResult);
+            console.error("Security Report:\n" + report);
+
+            throw new Error(
+              `SVG security validation failed: ${blockingThreats.map((t) => t.description).join(", ")}`
+            );
+          }
+        }
+
+        // Log warnings for non-blocking threats
+        const nonBlockingThreats = securityResult.threats.filter((threat) => !threat.blocking);
+        if (nonBlockingThreats.length > 0) {
+          logger?.warning("SVG security warnings", {
+            file: basename(inputPath),
+            warnings: nonBlockingThreats.map((t) => ({
+              type: t.type,
+              severity: t.severity,
+              description: t.description,
+            })),
+          });
+          console.warn(
+            `⚠️  ${basename(inputPath)}: ${nonBlockingThreats.length} SVG security warning(s)`
+          );
+        }
+
+        if (securityResult.threats.length === 0) {
+          logger?.info("SVG passed security scan", {
+            file: basename(inputPath),
+          });
+        }
+      } catch (error) {
+        logger?.error("SVG security scan failed", {
+          file: basename(inputPath),
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+        throw new Error(
+          `SVG security scan failed: ${error instanceof Error ? error.message : "Unknown error"}`
+        );
+      }
+    }
+
     if (config.width || config.height) {
       // For SVG files, always allow enlargement since they're vector graphics
       // For raster images, respect the withoutEnlargement setting
-      const isSvg = extname(inputPath).toLowerCase() === ".svg";
       const withoutEnlargement = isSvg ? false : defaultConfig.withoutEnlargement;
 
       transformer = transformer.resize({
@@ -836,6 +906,11 @@ async function main(): Promise<void> {
   let sourceDir = defaultConfig.sourceDir;
   let outputDir = defaultConfig.outputDir;
 
+  // SVG security scanning options
+  let scanSvg = false;
+  let svgSecurityLevel = SvgSecurityLevel.MODERATE;
+  let showDetailedReport = false;
+
   // A simple argument parser to get key-value pairs
   const values: { [key: string]: string | undefined } = {};
   for (let i = 0; i < args.length; i++) {
@@ -866,6 +941,18 @@ async function main(): Promise<void> {
       case "--output":
       case "-o":
         outputDir = args[++i] || "./results";
+        break;
+      case "--scan-svg":
+        scanSvg = true;
+        break;
+      case "--strict":
+        svgSecurityLevel = SvgSecurityLevel.STRICT;
+        break;
+      case "--permissive":
+        svgSecurityLevel = SvgSecurityLevel.PERMISSIVE;
+        break;
+      case "--detailed":
+        showDetailedReport = true;
         break;
       case "--clean": {
         const cleanSourceDir = args[i + 1] || sourceDir;
@@ -910,8 +997,19 @@ Options:
   --help                    Show this help message
 
 Supported Input Formats:
-  JPEG (.jpg, .jpeg), PNG (.png), WebP (.webp), GIF (.gif), SVG (.svg),
+  JPEG (.jpg, .jpeg), PNG (.png), WebP (.webp), GIF (.gif), SVG (.svg) *,
   TIFF (.tiff, .tif), AVIF (.avif), HEIF (.heif, .heic), JPEG XL (.jxl), BMP (.bmp)
+
+  * SVG files are automatically scanned for malicious content
+
+SVG Security Scanning:
+  Use --scan-svg to manually scan SVG files for malicious content
+  Security levels: permissive (minimal), moderate (recommended), strict (maximum)
+
+Examples:
+  bun run imgco --scan-svg                    # Scan with moderate security
+  bun run imgco --scan-svg --strict           # Scan with strict security
+  bun run imgco --scan-svg --detailed         # Show detailed reports
 
 Supported Output Formats:
   - jpeg  : JPEG (lossy, wide compatibility)
@@ -942,6 +1040,94 @@ Advanced Features (edit config.ts for):
         `);
         process.exit(0);
     }
+  }
+
+  // Handle SVG security scanning command
+  if (scanSvg) {
+    console.log("\n🔍 SVG Security Scanner\n");
+    console.log(`Security Level: ${svgSecurityLevel.toUpperCase()}`);
+    console.log(`Source: ${sourceDir}\n`);
+
+    // Get all SVG files
+    const allFiles = await getImageFiles(sourceDir);
+    const svgFiles = allFiles.filter((file) => file.toLowerCase().endsWith(".svg"));
+
+    if (svgFiles.length === 0) {
+      console.log("⚠️  No SVG files found to scan");
+      return;
+    }
+
+    console.log(`Found ${svgFiles.length} SVG file(s) to scan\n`);
+
+    let safeCount = 0;
+    let warningCount = 0;
+    let dangerousCount = 0;
+
+    for (const file of svgFiles) {
+      const inputPath = join(sourceDir, file);
+      console.log(`Scanning: ${file}`);
+
+      try {
+        const svgContent = await Bun.file(inputPath).text();
+        const securityResult = await scanSvgSecurity(svgContent, svgSecurityLevel, {
+          sanitize: false,
+          maxSize: 50 * 1024 * 1024, // 50MB
+        });
+
+        const blockingThreats = securityResult.threats.filter((threat) => threat.blocking);
+        const nonBlockingThreats = securityResult.threats.filter((threat) => !threat.blocking);
+
+        if (!securityResult.safe) {
+          console.log(`  ❌ UNSAFE - ${blockingThreats.length} blocking threat(s)`);
+          dangerousCount++;
+
+          if (showDetailedReport) {
+            blockingThreats.forEach((threat) => {
+              console.log(`    🚨 ${threat.description} (Severity: ${threat.severity}/10)`);
+            });
+          }
+        } else if (nonBlockingThreats.length > 0) {
+          console.log(`  ⚠️  WARNINGS - ${nonBlockingThreats.length} warning(s)`);
+          warningCount++;
+
+          if (showDetailedReport) {
+            nonBlockingThreats.forEach((threat) => {
+              console.log(`    ⚠️  ${threat.description} (Severity: ${threat.severity}/10)`);
+            });
+          }
+        } else {
+          console.log(`  ✅ SAFE - No threats detected`);
+          safeCount++;
+        }
+
+        if (showDetailedReport && securityResult.threats.length > 0) {
+          console.log("\n" + generateSecurityReport(securityResult));
+          console.log("");
+        }
+      } catch (error) {
+        console.log(
+          `  ✗ ERROR - Failed to scan: ${error instanceof Error ? error.message : "Unknown error"}`
+        );
+        dangerousCount++;
+      }
+
+      console.log("");
+    }
+
+    // Summary
+    console.log(`${"=".repeat(50)}`);
+    console.log(`📊 Scan Results:`);
+    console.log(`  ✅ Safe: ${safeCount}`);
+    console.log(`  ⚠️  Warnings: ${warningCount}`);
+    console.log(`  ❌ Unsafe: ${dangerousCount}`);
+    console.log(`  📁 Total: ${svgFiles.length}\n`);
+
+    if (dangerousCount > 0) {
+      console.log("⚠️  WARNING: Some SVG files contain security threats!");
+      console.log("Consider reviewing these files before using them in production.\n");
+    }
+
+    return;
   }
 
   console.log("\n🖼️  Image Converter Starting...\n");

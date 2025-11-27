@@ -1,52 +1,145 @@
-# dependencies (bun install)
+# Dependency directories
 node_modules
+jspm_packages
 
-# output
-out
-dist
+# Build outputs
+out/
+dist/
+build/
 *.tgz
+.next/
+.vercel
+.turbo
 
-# code coverage
-coverage
-*.lcov
-
-# logs
+# Logs
 logs/*
 !logs/.gitkeep
 *.log
-report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
-# dotenv environment variable files
+# Environment variables
 .env
 .env.development.local
 .env.test.local
 .env.production.local
 .env.local
 
-# caches
+# Caches and compiled outputs
+.cache/
 .eslintcache
-.cache
+.npm
 *.tsbuildinfo
+.parcel-cache
 
-# IntelliJ based IDEs
-.idea
+# Testing
+coverage/
+*.lcov
+.nyc_output/
 
-# Finder (MacOS) folder config
-.DS_Store
-
-# image directories
+# Project specific image directories
 raw/*
 !raw/.gitkeep
 results/*
 !results/.gitkeep
-
-# Next.js
-.next/
-out/
-build/
-.vercel
-.turbo
-
-# Next.js uploads (temporary files)
 public/uploads/*
 !public/uploads/.gitkeep
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+Icon
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# JetBrains IDEs
+.idea/
+*.iml
+*.iws
+*.ipr
+*.iws
+.idea_modules/
+out/
+.idea/httpRequests
+
+# VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+.history/
+.ionide
+
+# Sublime Text
+*.tmlanguage.cache
+*.tmPreferences.cache
+*.stTheme.cache
+*.sublime-workspace
+*.sublime-project
+
+# Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+Session.vim
+Sessionx.vim
+.netrwhist
+
+# Temporary files
+tmp/
+temp/
+
+# Bun
+bun.lockb
+
+# TypeScript
+*.js.map
+*.d.ts.map
+
+# Optional npm cache directory
+.npm
+
+# Yarn
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+.pnp.*

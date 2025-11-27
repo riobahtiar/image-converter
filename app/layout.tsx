@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { Lato, Chelsea_Market } from "next/font/google";
+import { Chelsea_Market, Lato } from "next/font/google";
 import "./globals.css";
-import { ThemeProvider } from "@/components/theme-provider";
 import { ModeToggle } from "@/components/mode-toggle";
+import { ThemeProvider } from "@/components/theme-provider";
 
 const lato = Lato({
   subsets: ["latin"],

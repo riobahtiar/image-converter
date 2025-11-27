@@ -43,7 +43,6 @@ export async function convertImage(
   });
 
   try {
-
     // Get original file size
     let originalSize = 0;
     if (typeof inputPath === "string") {

@@ -17,6 +17,7 @@
  */
 
 import { fileTypeFromBuffer } from "file-type";
+import { SvgSecurityLevel, type SvgSecurityResult, scanSvgSecurity } from "./svgSecurity";
 
 /**
  * Allowed image MIME types
@@ -88,6 +89,8 @@ export interface FileValidationResult {
   error?: string;
   /** Warning messages (validation passed but with caveats) */
   warnings?: string[];
+  /** SVG security scan result (only for SVG files) */
+  svgSecurity?: SvgSecurityResult;
 }
 
 /**
@@ -172,11 +175,13 @@ export async function validateImageFile(file: File): Promise<FileValidationResul
     // Step 3: SVG Special Handling
     // ========================================
     // SVG is text-based (XML), can't be validated via binary magic numbers
+    // SVG handling with security scanning
     if (extension === "svg") {
-      // Read first few bytes to check for XML/SVG markers
-      const arrayBuffer = await file.slice(0, 1000).arrayBuffer();
+      // Read the full file content for SVG security scanning
+      const arrayBuffer = await file.arrayBuffer();
       const text = new TextDecoder().decode(arrayBuffer);
 
+      // Basic SVG content validation
       if (!text.includes("<svg") && !text.includes("<?xml")) {
         return {
           valid: false,
@@ -186,18 +191,57 @@ export async function validateImageFile(file: File): Promise<FileValidationResul
         };
       }
 
-      // SVG files can contain malicious scripts
-      warnings.push(
-        "SVG files may contain embedded scripts. Ensure proper sanitization if displaying."
-      );
+      // Perform comprehensive SVG security scan
+      try {
+        const svgSecurity = await scanSvgSecurity(text, SvgSecurityLevel.MODERATE, {
+          sanitize: false,
+          maxSize: MAX_FILE_SIZE,
+        });
 
-      return {
-        valid: true,
-        mimeType: "image/svg+xml",
-        extension: "svg",
-        fileSize: file.size,
-        warnings,
-      };
+        // Check if SVG contains blocking threats
+        if (!svgSecurity.safe) {
+          const blockingThreats = svgSecurity.threats.filter((threat) => threat.blocking);
+          if (blockingThreats.length > 0) {
+            return {
+              valid: false,
+              fileSize: file.size,
+              extension,
+              mimeType: "image/svg+xml",
+              svgSecurity,
+              error: `SVG contains ${blockingThreats.length} security threat(s): ${blockingThreats.map((t) => t.description).join(", ")}`,
+            };
+          }
+        }
+
+        // Add warnings for non-blocking threats
+        if (svgSecurity.threats.length > 0) {
+          const nonBlockingThreats = svgSecurity.threats.filter((threat) => !threat.blocking);
+          for (const threat of nonBlockingThreats) {
+            warnings.push(`SVG security warning: ${threat.description}`);
+          }
+        }
+
+        // Add general SVG warning
+        warnings.push(
+          "SVG files have been scanned for malicious content but should still be handled with caution."
+        );
+
+        return {
+          valid: true,
+          mimeType: "image/svg+xml",
+          extension: "svg",
+          fileSize: file.size,
+          svgSecurity,
+          warnings,
+        };
+      } catch (error) {
+        return {
+          valid: false,
+          fileSize: file.size,
+          extension,
+          error: `SVG security scan failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        };
+      }
     }
 
     // ========================================
@@ -334,9 +378,11 @@ export async function validateImageBuffer(
       };
     }
 
-    // SVG handling
+    // SVG handling with security scanning
     if (extension === "svg") {
-      const text = buffer.toString("utf-8", 0, Math.min(1000, buffer.length));
+      const text = buffer.toString("utf-8");
+
+      // Basic SVG content validation
       if (!text.includes("<svg") && !text.includes("<?xml")) {
         return {
           valid: false,
@@ -345,15 +391,53 @@ export async function validateImageBuffer(
         };
       }
 
-      warnings.push("SVG files may contain embedded scripts");
+      // Perform comprehensive SVG security scan
+      try {
+        const svgSecurity = await scanSvgSecurity(text, SvgSecurityLevel.MODERATE, {
+          sanitize: false,
+          maxSize: MAX_FILE_SIZE,
+        });
 
-      return {
-        valid: true,
-        mimeType: "image/svg+xml",
-        extension: "svg",
-        fileSize,
-        warnings,
-      };
+        // Check if SVG contains blocking threats
+        if (!svgSecurity.safe) {
+          const blockingThreats = svgSecurity.threats.filter((threat) => threat.blocking);
+          if (blockingThreats.length > 0) {
+            return {
+              valid: false,
+              fileSize,
+              extension,
+              mimeType: "image/svg+xml",
+              svgSecurity,
+              error: `SVG contains ${blockingThreats.length} security threat(s): ${blockingThreats.map((t) => t.description).join(", ")}`,
+            };
+          }
+        }
+
+        // Add warnings for non-blocking threats
+        if (svgSecurity.threats.length > 0) {
+          const nonBlockingThreats = svgSecurity.threats.filter((threat) => !threat.blocking);
+          for (const threat of nonBlockingThreats) {
+            warnings.push(`SVG security warning: ${threat.description}`);
+          }
+        }
+
+        warnings.push("SVG files have been scanned for malicious content");
+
+        return {
+          valid: true,
+          mimeType: "image/svg+xml",
+          extension: "svg",
+          fileSize,
+          svgSecurity,
+          warnings,
+        };
+      } catch (error) {
+        return {
+          valid: false,
+          fileSize,
+          error: `SVG security scan failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        };
+      }
     }
 
     // Magic number detection

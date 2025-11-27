@@ -8,14 +8,26 @@
   "files": {
     "ignoreUnknown": false,
     "includes": [
-      "**",
+      "**/*.js",
+      "**/*.jsx",
+      "**/*.ts",
+      "**/*.tsx",
+      "**/*.mjs",
+      "**/*.json",
       "!**/node_modules",
       "!**/.next",
       "!**/dist",
       "!**/build",
       "!**/*.log",
       "!**/.env*",
-      "!**/public/uploads"
+      "!**/public/uploads",
+      "!**/*.css",
+      "!**/*.scss",
+      "!**/*.sass",
+      "!**/*.less",
+      "!**/*.html",
+      "!**/*.md",
+      "!**/*.svg"
     ]
   },
   "formatter": {

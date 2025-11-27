@@ -4,10 +4,10 @@ import { type NextRequest, NextResponse } from "next/server";
 import { fileCache } from "@/lib/cache";
 import { convertImage } from "@/lib/converter";
 import type { ImageFormat, ResizeFit } from "@/lib/converter/types";
-import { generateUniqueFilename } from "@/lib/utils";
-import { getSession } from "@/lib/session";
+import { MAX_FILE_SIZE, validateImageFile } from "@/lib/fileValidation";
 import { checkRateLimit, conversionRateLimiter } from "@/lib/ratelimit";
-import { validateImageFile, MAX_FILE_SIZE } from "@/lib/fileValidation";
+import { getSession } from "@/lib/session";
+import { generateUniqueFilename } from "@/lib/utils";
 
 /**
  * Supported input image formats
@@ -54,7 +54,9 @@ export async function POST(request: NextRequest) {
     // Step 1: Session Management
     // ========================================
     const session = await getSession();
-    console.log("[SERVER] Session initialized", { sessionId: session.sessionId });
+    console.log("[SERVER] Session initialized", {
+      sessionId: session.sessionId,
+    });
 
     // ========================================
     // Step 2: Rate Limiting (Conversion-Specific)
@@ -150,6 +152,9 @@ export async function POST(request: NextRequest) {
     // ========================================
     // Step 5: Validate All Files Before Processing
     // ========================================
+    // Store validation results for later use
+    const validationResults: Map<string, any> = new Map();
+
     for (const file of files) {
       // File size check
       if (file.size > MAX_FILE_SIZE) {
@@ -161,20 +166,49 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Magic number validation
+      // Enhanced validation with SVG security scanning
       const validation = await validateImageFile(file);
+
+      // Store validation result for later use
+      validationResults.set(file.name, validation);
+
       if (!validation.valid) {
+        console.error(`File "${file.name}" validation failed:`, validation.error);
+
+        // Provide detailed security information for SVG files
+        if (validation.svgSecurity) {
+          console.error(`SVG security threats:`, validation.svgSecurity.threats);
+        }
+
         return NextResponse.json(
           {
             error: `File "${file.name}" validation failed: ${validation.error}`,
+            validationDetails: validation.svgSecurity
+              ? {
+                  securityLevel: validation.svgSecurity.securityLevel,
+                  threatsFound: validation.svgSecurity.threats.length,
+                  blockingThreats: validation.svgSecurity.threats.filter((t) => t.blocking).length,
+                }
+              : undefined,
           },
           { status: 400 }
         );
       }
 
-      // Log warnings if any
+      // Log security warnings if any
       if (validation.warnings && validation.warnings.length > 0) {
-        console.warn(`File "${file.name}" warnings:`, validation.warnings);
+        console.warn(`File "${file.name}" validation warnings:`, validation.warnings);
+      }
+
+      // Log SVG security scan results
+      if (validation.svgSecurity) {
+        const { threats, securityLevel, safe } = validation.svgSecurity;
+        console.log(`SVG security scan for "${file.name}":`, {
+          safe,
+          securityLevel,
+          threatsFound: threats.length,
+          blockingThreats: threats.filter((t) => t.blocking).length,
+        });
       }
     }
 
@@ -182,7 +216,9 @@ export async function POST(request: NextRequest) {
     // Step 6: Process Each File
     // ========================================
     const results = [];
-    console.log("[SERVER] Starting file processing", { fileCount: files.length });
+    console.log("[SERVER] Starting file processing", {
+      fileCount: files.length,
+    });
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -282,7 +318,9 @@ export async function POST(request: NextRequest) {
             JSON.stringify(metadata, null, 2)
           );
 
-          results.push({
+          // Get validation info for this file
+          const validation = validationResults.get(file.name);
+          const resultData: any = {
             success: true,
             originalFilename: file.name,
             outputFilename: outputBasename, // Internal unique filename
@@ -292,7 +330,27 @@ export async function POST(request: NextRequest) {
             originalSize: result.originalSize,
             convertedSize: result.convertedSize,
             reductionPercent: result.reductionPercent,
-          });
+          };
+
+          // Include SVG security information if available
+          if (validation?.svgSecurity) {
+            resultData.svgSecurity = {
+              safe: validation.svgSecurity.safe,
+              securityLevel: validation.svgSecurity.securityLevel,
+              threatsFound: validation.svgSecurity.threats.length,
+              blockingThreats: validation.svgSecurity.threats.filter((t: any) => t.blocking).length,
+              nonBlockingThreats: validation.svgSecurity.threats.filter((t: any) => !t.blocking)
+                .length,
+              threats: validation.svgSecurity.threats.map((threat: any) => ({
+                type: threat.type,
+                severity: threat.severity,
+                description: threat.description,
+                blocking: threat.blocking,
+              })),
+            };
+          }
+
+          results.push(resultData);
         } else {
           results.push({
             success: false,

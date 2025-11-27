@@ -32,12 +32,47 @@ bun run imgco -w 800 -f webp -q 85
 ## ✨ Features
 
 - **Multiple formats**: JPEG, PNG, WebP, AVIF, GIF, TIFF, HEIF, SVG
+- **🛡️ SVG Security**: Automatic malicious code detection and blocking
 - **Bulk processing**: Convert multiple images at once
 - **Smart compression**: Format-specific optimization
 - **Custom dimensions**: Resize with aspect ratio control
 - **Two interfaces**: Web UI or command line
 - **Fast**: Powered by Sharp (libvips C++ library)
 - **Auto-cleanup**: Web app deletes files after 15 minutes
+
+---
+
+## 🛡️ SVG Security
+
+**All SVG files are automatically scanned for malicious content!**
+
+- **🚨 Blocks dangerous files**: Scripts, event handlers, external references
+- **⚠️ Warns about risks**: Non-blocking security issues  
+- **📊 Detailed reports**: Security analysis with threat breakdown
+- **🔧 Multiple levels**: Permissive, Moderate (default), Strict
+
+```bash
+# Dedicated security scanning
+bun run imgco --scan-svg --detailed
+
+# Security levels
+bun run imgco --scan-svg --strict     # Maximum security
+bun run imgco --scan-svg --moderate   # Balanced (default) 
+bun run imgco --scan-svg --permissive # Minimal security
+```
+
+**Example Output:**
+```
+Scanning: malicious.svg
+  ❌ UNSAFE - 5 blocking threat(s)
+    🚨 JavaScript code detected (Severity: 10/10)
+    🚨 Event handler detected (Severity: 9/10)
+
+Scanning: safe.svg
+  ✅ SAFE - No threats detected
+```
+
+**📖 [Complete SVG Security Guide →](./SVG-SECURITY.md)**
 
 ---
 

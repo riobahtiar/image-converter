@@ -18,8 +18,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import {
+  SvgSecurityBadge,
+  type SvgSecurityInfo,
+  SvgSecurityWarning,
+} from "@/components/ui/svg-security-badge";
 import type { ImageFormat, ResizeFit } from "@/lib/converter/types";
-import { formatBytes } from "@/lib/utils";
+import { formatBytes, isSvgFile, validateSvgFile } from "@/lib/utils";
+import {
+  compressImagesClientBatch,
+  getOptimalCompressionSettings,
+  shouldCompressFile,
+} from "@/lib/clientCompression";
 
 interface ConversionResult {
   success: boolean;
@@ -31,6 +41,7 @@ interface ConversionResult {
   convertedSize?: number;
   reductionPercent?: number;
   error?: string;
+  svgSecurity?: SvgSecurityInfo;
 }
 
 interface ConversionStats {
@@ -53,6 +64,8 @@ interface FileWithSettings {
   file: File;
   settings: FileSettings;
   selected: boolean;
+  svgSecurity?: SvgSecurityInfo;
+  validationWarnings?: string[];
 }
 
 export default function Home() {
@@ -62,6 +75,11 @@ export default function Home() {
   const [results, setResults] = useState<ConversionResult[]>([]);
   const [stats, setStats] = useState<ConversionStats | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Client-side compression states
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [compressionProgress, setCompressionProgress] = useState(0);
+  const [compressionStatus, setCompressionStatus] = useState("");
 
   // Modals for settings
   const [showIndividualSettings, setShowIndividualSettings] = useState<number | null>(null);
@@ -82,29 +100,53 @@ export default function Home() {
   });
   const [overrideIndividual, setOverrideIndividual] = useState(true);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const newFiles = Array.from(e.target.files).map((file) => ({
-        file,
-        settings: { ...defaultSettings },
-        selected: false,
-      }));
+      const newFiles = await Promise.all(
+        Array.from(e.target.files).map(async (file) => {
+          const fileWithSettings: FileWithSettings = {
+            file,
+            settings: { ...defaultSettings },
+            selected: false,
+          };
+
+          // Validate SVG files on client side
+          if (isSvgFile(file.name)) {
+            const validation = await validateSvgFile(file);
+            fileWithSettings.validationWarnings = validation.warnings;
+          }
+
+          return fileWithSettings;
+        })
+      );
       setFiles(newFiles);
       setResults([]);
       setStats(null);
     }
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
     if (e.dataTransfer.files) {
-      const newFiles = Array.from(e.dataTransfer.files).map((file) => ({
-        file,
-        settings: { ...defaultSettings },
-        selected: false,
-      }));
+      const newFiles = await Promise.all(
+        Array.from(e.dataTransfer.files).map(async (file) => {
+          const fileWithSettings: FileWithSettings = {
+            file,
+            settings: { ...defaultSettings },
+            selected: false,
+          };
+
+          // Validate SVG files on client side
+          if (isSvgFile(file.name)) {
+            const validation = await validateSvgFile(file);
+            fileWithSettings.validationWarnings = validation.warnings;
+          }
+
+          return fileWithSettings;
+        })
+      );
       setFiles(newFiles);
       setResults([]);
       setStats(null);
@@ -193,10 +235,85 @@ export default function Home() {
     setResults([]);
 
     try {
+      // STEP 1: Client-side compression (Islands Architecture - lazy loaded)
+      let processedFiles = files;
+      const filesToCompress = files.filter((f) => shouldCompressFile(f.file));
+
+      if (filesToCompress.length > 0) {
+        setIsCompressing(true);
+        setCompressionProgress(0);
+        setCompressionStatus("Preparing files for upload...");
+
+        console.log("[BROWSER] Starting client-side compression", {
+          totalFiles: files.length,
+          filesToCompress: filesToCompress.length,
+        });
+
+        try {
+          const compressionResults = await compressImagesClientBatch(
+            filesToCompress.map((f) => f.file),
+            {
+              ...getOptimalCompressionSettings(
+                Math.max(...filesToCompress.map((f) => f.file.size))
+              ),
+              onFileProgress: (current, total, filename) => {
+                const progress = Math.round((current / total) * 100);
+                setCompressionProgress(progress);
+                setCompressionStatus(`Optimizing ${current}/${total}: ${filename}`);
+                console.log("[BROWSER] Client compression progress", {
+                  current,
+                  total,
+                  filename,
+                  progress: `${progress}%`,
+                });
+              },
+            }
+          );
+
+          // Replace original files with compressed versions
+          const compressedMap = new Map(
+            compressionResults.map((result, idx) => [
+              filesToCompress[idx]?.file.name || "",
+              result.compressedFile,
+            ])
+          );
+
+          processedFiles = files.map((f) => {
+            const compressed = compressedMap.get(f.file.name);
+            if (compressed) {
+              console.log("[BROWSER] File compressed", {
+                filename: f.file.name,
+                originalSize: f.file.size,
+                compressedSize: compressed.size,
+                reduction: `${(((f.file.size - compressed.size) / f.file.size) * 100).toFixed(1)}%`,
+              });
+              return { ...f, file: compressed };
+            }
+            return f;
+          });
+
+          setCompressionStatus("Compression complete!");
+          console.log("[BROWSER] Client-side compression completed", {
+            totalSavings: compressionResults.reduce(
+              (sum, r) => sum + (r.originalSize - r.compressedSize),
+              0
+            ),
+          });
+        } catch (error) {
+          console.warn("[BROWSER] Client compression failed, using original files", error);
+          // Continue with original files if compression fails
+        } finally {
+          setIsCompressing(false);
+          setCompressionProgress(0);
+          setCompressionStatus("");
+        }
+      }
+
+      // STEP 2: Upload to server
       const formData = new FormData();
 
       // Add files with their individual settings
-      for (const [index, fileWithSettings] of files.entries()) {
+      for (const [index, fileWithSettings] of processedFiles.entries()) {
         formData.append("files", fileWithSettings.file);
         formData.append(`settings[${index}]`, JSON.stringify(fileWithSettings.settings));
         console.log("[BROWSER] Preparing file for upload", {
@@ -207,7 +324,7 @@ export default function Home() {
       }
 
       console.log("[BROWSER] Sending conversion request to server", {
-        fileCount: files.length,
+        fileCount: processedFiles.length,
         endpoint: "/api/convert",
       });
 
@@ -224,7 +341,10 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        throw new Error("Conversion failed");
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.error || errorData.message || "Conversion failed";
+        console.error("[BROWSER] Server error:", errorData);
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
@@ -236,14 +356,31 @@ export default function Home() {
         sessionId: data.sessionId,
       });
 
+      // Update files with SVG security information from server
+      if (data.results) {
+        const updatedFiles = [...files];
+        data.results.forEach((result: ConversionResult) => {
+          const fileIndex = updatedFiles.findIndex((f) => f.file.name === result.originalFilename);
+          if (fileIndex !== -1 && result.svgSecurity && updatedFiles[fileIndex]) {
+            updatedFiles[fileIndex].svgSecurity = result.svgSecurity;
+          }
+        });
+        setFiles(updatedFiles);
+      }
+
       setResults(data.results);
       setStats(data.stats);
       setProgress(100);
     } catch (error) {
       console.error("[BROWSER] Conversion error:", error);
-      alert("Conversion failed. Please try again.");
+      const errorMessage =
+        error instanceof Error ? error.message : "Conversion failed. Please try again.";
+      alert(`Conversion failed: ${errorMessage}`);
     } finally {
       setConverting(false);
+      setIsCompressing(false);
+      setCompressionProgress(0);
+      setCompressionStatus("");
       console.log("[BROWSER] Conversion process finished");
     }
   };
@@ -484,14 +621,64 @@ export default function Home() {
 
                         {/* File info */}
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {fileWithSettings.file.name}
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium truncate">
+                              {fileWithSettings.file.name}
+                            </p>
+                            {/* SVG Security Badge */}
+                            {fileWithSettings.svgSecurity && (
+                              <SvgSecurityBadge securityInfo={fileWithSettings.svgSecurity} />
+                            )}
+                            {/* SVG validation warning indicator */}
+                            {isSvgFile(fileWithSettings.file.name) &&
+                              fileWithSettings.validationWarnings && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs bg-yellow-50 text-yellow-700 border-yellow-200"
+                                >
+                                  SVG
+                                </Badge>
+                              )}
+                          </div>
                           <p className="text-xs text-muted-foreground">
                             {formatBytes(fileWithSettings.file.size)} →{" "}
                             {fileWithSettings.settings.format.toUpperCase()} (
                             {fileWithSettings.settings.quality}%)
                           </p>
+
+                          {/* SVG Security Warning */}
+                          {fileWithSettings.svgSecurity && !fileWithSettings.svgSecurity.safe && (
+                            <div className="mt-2">
+                              <SvgSecurityWarning
+                                securityInfo={fileWithSettings.svgSecurity}
+                                fileName={fileWithSettings.file.name}
+                                className="text-xs"
+                              />
+                            </div>
+                          )}
+
+                          {/* Client-side validation warnings */}
+                          {fileWithSettings.validationWarnings &&
+                            fileWithSettings.validationWarnings.length > 0 && (
+                              <div className="mt-1 space-y-1">
+                                {fileWithSettings.validationWarnings
+                                  .slice(0, 2)
+                                  .map((warning, idx) => (
+                                    <p
+                                      key={idx}
+                                      className="text-xs text-yellow-700 dark:text-yellow-300"
+                                    >
+                                      ⚠️ {warning}
+                                    </p>
+                                  ))}
+                                {fileWithSettings.validationWarnings.length > 2 && (
+                                  <p className="text-xs text-gray-500 italic">
+                                    ... and {fileWithSettings.validationWarnings.length - 2} more
+                                    warnings
+                                  </p>
+                                )}
+                              </div>
+                            )}
                         </div>
 
                         {/* Options button */}
@@ -870,11 +1057,16 @@ export default function Home() {
           {files.length > 0 && (
             <Button
               onClick={handleConvert}
-              disabled={converting}
+              disabled={converting || isCompressing}
               className="w-full h-12 text-base font-semibold shadow-lg hover:shadow-xl transition-all"
               size="lg"
             >
-              {converting ? (
+              {isCompressing ? (
+                <>
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  Optimizing files...
+                </>
+              ) : converting ? (
                 <>
                   <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                   Converting...
@@ -888,8 +1080,29 @@ export default function Home() {
             </Button>
           )}
 
-          {/* Progress */}
-          {converting && (
+          {/* Client-side Compression Progress */}
+          {isCompressing && (
+            <Card className="border-2 shadow-lg border-blue-500/50 bg-blue-50/50 dark:bg-blue-950/20">
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+                  <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                    Optimizing files before upload...
+                  </p>
+                </div>
+                <Progress value={compressionProgress} className="w-full h-3 mb-2" />
+                <p className="text-xs text-center text-blue-700 dark:text-blue-300 font-medium">
+                  {compressionStatus}
+                </p>
+                <p className="text-xs text-center text-muted-foreground mt-2">
+                  This reduces upload time and server load
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Server-side Conversion Progress */}
+          {converting && !isCompressing && (
             <Card className="border-2 shadow-lg">
               <CardContent className="pt-6">
                 <Progress value={progress} className="w-full h-3" />
@@ -964,7 +1177,15 @@ export default function Home() {
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{result.originalFilename}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium truncate">
+                              {result.originalFilename}
+                            </p>
+                            {/* SVG Security Badge for results */}
+                            {result.svgSecurity && (
+                              <SvgSecurityBadge securityInfo={result.svgSecurity} />
+                            )}
+                          </div>
                           {result.success ? (
                             <p className="text-xs text-muted-foreground mt-1">
                               <span className="font-medium">
@@ -979,7 +1200,8 @@ export default function Home() {
                                   className={`ml-2 font-semibold ${result.reductionPercent > 0 ? "text-green-600" : "text-orange-600"}`}
                                 >
                                   ({result.reductionPercent > 0 ? "-" : "+"}
-                                  {Math.abs(result.reductionPercent).toFixed(1)}%)
+                                  {Math.abs(result.reductionPercent).toFixed(1)}
+                                  %)
                                 </span>
                               )}
                             </p>

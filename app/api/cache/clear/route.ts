@@ -11,9 +11,9 @@
  * @module app/api/cache/clear/route
  */
 
+import { NextResponse } from "next/server";
 import { fileCache } from "@/lib/cache";
 import { getSession } from "@/lib/session";
-import { NextResponse } from "next/server";
 
 /**
  * POST /api/cache/clear
